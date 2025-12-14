@@ -1,2 +1,2 @@
 # Rokid-HuiShi-M
-慧视校园 手机端App
+慧视校园 手机端app
