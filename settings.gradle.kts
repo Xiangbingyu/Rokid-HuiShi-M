@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "HuiShiM"
-include(":huishi-m1")
+rootProject.name = "Rokid-HuiShi-M"
+include(":app")
  
