@@ -38,6 +38,18 @@
             android:name=".activities.bluetoothConnection.BluetoothConnectionActivity"
             android:exported="false"
             android:theme="@style/Theme.RokidHuiShiM" />
+        <activity
+            android:name=".activities.AppNavigationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RokidHuiShiM" />
+        <activity
+            android:name=".activities.huishiCampus.HuishiCampusActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RokidHuiShiM" />
+        <activity
+            android:name=".activities.suixinYiting.SuixinYitingActivity"
+            android:exported="false"
+            android:theme="@style/Theme.RokidHuiShiM" />
 
     </application>
 

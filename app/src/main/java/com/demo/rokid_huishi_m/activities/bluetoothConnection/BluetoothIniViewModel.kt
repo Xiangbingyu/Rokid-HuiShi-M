@@ -396,8 +396,8 @@ class BluetoothIniViewModel : ViewModel() {
      * Switch to the usage selection activity
      */
     fun toUseGlasses(context: Context){
-        // 根据实际需求修改目标Activity
-        // context.startActivity(Intent(context, UsageSelectionActivity::class.java))
+        // 跳转到应用导航页面
+        context.startActivity(Intent(context, com.demo.rokid_huishi_m.activities.AppNavigationActivity::class.java))
     }
     
     /**
