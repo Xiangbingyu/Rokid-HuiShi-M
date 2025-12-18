@@ -13,13 +13,16 @@ import android.util.Log
 import androidx.core.content.edit
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.rokid.cxr.client.extend.CxrApi
 import com.rokid.cxr.client.extend.callbacks.BluetoothStatusCallback
 import com.rokid.cxr.client.utils.ValueUtil
 import com.demo.rokid_huishi_m.dataBeans.CONSTANT
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 data class DeviceItem(
     val device: BluetoothDevice?,
@@ -74,13 +77,18 @@ class BluetoothIniViewModel : ViewModel() {
             glassesType: Int
         ) {
             Log.d(TAG, "onConnectionInfo: uuid=$uuid, macAddress=$macAddress, p2=$p2, p3=${if (glassesType == 1) "Display glasses" else "Non-display glasses"}")
+            // Update connection status first
+            val isActuallyConnected = CxrApi.getInstance().isBluetoothConnected
+            _connected.value = isActuallyConnected
+            _connecting.value = false
+            
             // Check if device info matches recorded info
             if (_recordUUID.value == (uuid ?: "error") && _recordMacAddress.value == (macAddress
                     ?: "error")
             ) {
                 Log.d(TAG, "Device matches recorded info")
                 // If device is not connected, post toConnect
-                if (!CxrApi.getInstance().isBluetoothConnected) {
+                if (!isActuallyConnected) {
                     Log.d(TAG, "Device not connected, posting toConnect")
                     toConnect.postValue(true)
                 } else {
@@ -137,8 +145,39 @@ class BluetoothIniViewModel : ViewModel() {
 
     }
 
+    private var isCheckingConnection = false
+    
     init {
         _recordState.value = false
+        startConnectionCheck()
+    }
+    
+    /**
+     * Start periodic connection status check
+     */
+    private fun startConnectionCheck() {
+        if (isCheckingConnection) return
+        
+        isCheckingConnection = true
+        viewModelScope.launch {
+            while (isCheckingConnection) {
+                // Check connection status every 1 second
+                checkConnection()
+                delay(1000)
+            }
+        }
+    }
+    
+    /**
+     * Stop periodic connection status check
+     */
+    private fun stopConnectionCheck() {
+        isCheckingConnection = false
+    }
+    
+    override fun onCleared() {
+        super.onCleared()
+        stopConnectionCheck()
     }
     // Callback for BLE scan
     private val bleScannerCallback: ScanCallback = object : ScanCallback() {
@@ -289,6 +328,8 @@ class BluetoothIniViewModel : ViewModel() {
             TAG,
             "Reconnecting to device: uuid=${_recordUUID.value}, mac=${_recordMacAddress.value}"
         )
+        // Set connecting state immediately
+        _connecting.value = true
         // Reconnect/Connect(first time) to the device
         try {
             CxrApi.getInstance().connectBluetooth(
@@ -302,6 +343,8 @@ class BluetoothIniViewModel : ViewModel() {
         }catch (e: Exception){
             Log.d(TAG, "Error: ${e.message}")
             e.printStackTrace()
+            // Reset connecting state if error occurs
+            _connecting.value = false
         }
 
     }
@@ -342,6 +385,10 @@ class BluetoothIniViewModel : ViewModel() {
      * Disconnect from the Bluetooth socket
      */
     fun disconnect() {
+        Log.d(TAG, "Disconnecting Bluetooth")
+        // Reset connection states immediately
+        _connecting.value = false
+        _connected.value = false
         CxrApi.getInstance().deinitBluetooth()
     }
     
@@ -357,6 +404,9 @@ class BluetoothIniViewModel : ViewModel() {
      * Check the connection status
      */
     fun checkConnection() {
-        _connected.value = CxrApi.getInstance().isBluetoothConnected
+        val isConnected = CxrApi.getInstance().isBluetoothConnected
+        _connected.value = isConnected
+        _connecting.value = false
+        Log.d(TAG, "checkConnection: isConnected=$isConnected")
     }
 }

@@ -105,6 +105,12 @@ class BluetoothInitActivity : ComponentActivity() {
         requestBluetoothPermissions()
     }
     
+    override fun onResume() {
+        super.onResume()
+        // Check connection status when activity resumes
+        viewModel.checkConnection()
+    }
+    
     private fun requestBluetoothPermissions() {
         requestPermissionLauncher.launch(CONSTANT.BLUETOOTH_PERMISSIONS)
     }
