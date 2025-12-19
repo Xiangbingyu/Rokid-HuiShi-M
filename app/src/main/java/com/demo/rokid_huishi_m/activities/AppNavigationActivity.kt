@@ -62,7 +62,8 @@ fun AppNavigationScreen(
         AppCard(
             title = "慧视校园",
             description = "校园应用",
-            onClick = onHuishiCampusClick
+            onClick = onHuishiCampusClick,
+            coverImage = R.drawable.huishicampus
         )
         
         Spacer(modifier = Modifier.height(24.dp))

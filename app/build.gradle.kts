@@ -71,4 +71,9 @@ dependencies {
     implementation("com.rokid.cxr:client-m:1.0.4") {
         exclude(group = "com.rokid.cxr", module = "client-m-sources")
     }
+
+    // 核心 Icons 依赖（必须）
+    implementation("androidx.compose.material:material-icons-core:1.6.0")
+// 扩展 Icons 依赖（包含所有内置图标，如 PlayArrow/Pause）
+    implementation("androidx.compose.material:material-icons-extended:1.6.0")
 }
