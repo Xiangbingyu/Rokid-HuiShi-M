@@ -198,44 +198,55 @@ fun MusicPlayerScreen(
         }
 
         // 随心播放按钮
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(80.dp)
-                    .clickable {
-                        // 点击随机播放按钮
-                        val randomMusic = musicRandomPlayer.getRandomMusic(musicList)
-                        if (randomMusic != null) {
-                            // 更新当前播放的音乐
-                            currentMusic = randomMusic
-                            // 使用同一个播放器实例播放
-                            musicPlayerManager.play(context, randomMusic.resourceId) {
-                                isPlaying = false
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(80.dp)
+                                    .clickable {
+                                        // 点击随心播放按钮
+                                        musicRandomPlayer.analyzeImageForMusic(object : MusicRandomPlayer.OnAnalyzeCompleteListener {
+                                            override fun onAnalyzeComplete(musicId: Int?) {
+                                                if (musicId != null) {
+                                                    // 根据后端返回的musicId查找对应的音乐
+                                                    // 注意：这里需要根据实际情况调整，因为本地MusicItem的id是动态生成的
+                                                    // 如果后端返回的是音乐的其他标识（如名称），需要相应地修改查找逻辑
+                                                    val musicToPlay = musicList.find { it.id == musicId }
+                                                    if (musicToPlay != null) {
+                                                        // 更新当前播放的音乐
+                                                        currentMusic = musicToPlay
+                                                        // 使用同一个播放器实例播放
+                                                        musicPlayerManager.play(context, musicToPlay.resourceId) {
+                                                            isPlaying = false
+                                                        }
+                                                        isPlaying = true
+                                                    }
+                                                } else {
+                                                    // 分析失败或没有找到匹配的音乐，可以根据需要添加提示
+                                                }
+                                            }
+                                        })
+                                    },
+                                elevation = CardDefaults.cardElevation(4.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xFF4CAF50)
+                                )
+                            ) {
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    Text(
+                                        text = "🎲 随心播放",
+                                        fontSize = 24.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        modifier = Modifier.align(Alignment.Center)
+                                    )
+                                }
                             }
-                            isPlaying = true
                         }
-                    },
-                elevation = CardDefaults.cardElevation(4.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF4CAF50)
-                )
-            ) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    Text(
-                        text = "🎲 随心播放",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-            }
-        }
 
         // 音乐列表
         LazyColumn(
