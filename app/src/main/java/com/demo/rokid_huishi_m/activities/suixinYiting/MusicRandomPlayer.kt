@@ -33,7 +33,7 @@ class MusicRandomPlayer {
     private val DEFAULT_PHOTO_QUALITY = 50
 
     // 拍照并发送图片到后端进行分析
-    fun analyzeImageForMusic(onAnalyzeCompleteListener: OnAnalyzeCompleteListener) {
+    fun analyzeImageForMusic(mbti: String, mood: String, preference: String, onAnalyzeCompleteListener: OnAnalyzeCompleteListener) {
         // 拍照回调
         val pictureCallback = PhotoResultCallback { status, imageData ->
             when (status) {
@@ -45,7 +45,7 @@ class MusicRandomPlayer {
                             val base64Data = Base64.getEncoder().encodeToString(imageData)
                             Log.d(TAG, "Base64转换成功，长度：${base64Data.length}")
                             // 发送图片到后端分析
-                            sendImageToBackend(base64Data, onAnalyzeCompleteListener)
+                            sendImageToBackend(base64Data, mbti, mood, preference, onAnalyzeCompleteListener)
                         } catch (e: Exception) {
                             // Base64转换失败
                             e.printStackTrace()
@@ -90,7 +90,7 @@ class MusicRandomPlayer {
     }
 
     // 将图片发送到后端进行分析
-    private fun sendImageToBackend(base64Data: String, onAnalyzeCompleteListener: OnAnalyzeCompleteListener) {
+    private fun sendImageToBackend(base64Data: String, mbti: String, mood: String, preference: String, onAnalyzeCompleteListener: OnAnalyzeCompleteListener) {
         // 增加连接超时和读取超时时间
         val client = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -99,7 +99,7 @@ class MusicRandomPlayer {
         // 当前使用的是IPv4地址
         // 注意：是否需要使用IPv6地址取决于后端服务器的配置和网络环境
         // 如果后端服务器只支持IPv6，请将URL修改为IPv6格式，例如：http://[2001:db8::1]:8000/llm/analyze_image/
-        val url = "http://10.252.39.145:8000/llm/analyze_image/"
+        val url = "http://10.252.12.20:8000/llm/analyze_image/"
         val mediaType = "application/json; charset=utf-8".toMediaType()
 
         Log.d(TAG, "准备发送网络请求到: $url")
@@ -107,6 +107,9 @@ class MusicRandomPlayer {
         // 创建请求体
         val requestBody = JSONObject()
         requestBody.put("base64_data", base64Data)
+        requestBody.put("mbti", mbti)
+        requestBody.put("mood", mood)
+        requestBody.put("preference", preference)
         val requestBodyString = requestBody.toString().toRequestBody(mediaType)
 
         Log.d(TAG, "请求体大小: ${requestBodyString.contentLength()}")

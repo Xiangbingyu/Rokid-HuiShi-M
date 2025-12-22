@@ -16,18 +16,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.clickable
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -179,6 +183,17 @@ fun MusicPlayerScreen(
 ) {
     var currentMusic by remember { mutableStateOf<MusicItem?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
+    
+    // 用户偏好设置状态
+    var mbti by remember { mutableStateOf("infp") }
+    var mood by remember { mutableStateOf("低落") }
+    var preference by remember { mutableStateOf("安静，流行，民谣") }
+    
+    // 编辑模式状态
+    var isEditMode by remember { mutableStateOf(false) }
+    var editMbti by remember { mutableStateOf(mbti) }
+    var editMood by remember { mutableStateOf(mood) }
+    var editPreference by remember { mutableStateOf(preference) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // 标题
@@ -198,6 +213,125 @@ fun MusicPlayerScreen(
             )
         }
 
+        // 用户偏好设置展示栏
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .height(120.dp),
+            elevation = CardDefaults.cardElevation(4.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFFE3F2FD)
+            )
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                // 展示模式
+                Column(modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)) {
+                    Text(
+                        text = "个人偏好设置",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column {
+                            Text(text = "MBTI: $mbti", fontSize = 14.sp)
+                            Text(text = "心情: $mood", fontSize = 14.sp)
+                            Text(text = "偏好: $preference", fontSize = 14.sp)
+                        }
+                        IconButton(onClick = {
+                            // 进入编辑模式
+                            editMbti = mbti
+                            editMood = mood
+                            editPreference = preference
+                            isEditMode = true
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "编辑偏好设置",
+                                tint = Color(0xFF2196F3)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 编辑对话框
+        if (isEditMode) {
+            AlertDialog(
+                onDismissRequest = {
+                    // 点击对话框外部关闭
+                    isEditMode = false
+                },
+                title = { Text(text = "编辑个人偏好") },
+                text = {
+                    Column {
+                        // MBTI编辑
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "MBTI:", fontSize = 14.sp, modifier = Modifier.width(60.dp))
+                            TextField(
+                                value = editMbti,
+                                onValueChange = { editMbti = it },
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text(text = "请输入MBTI类型") }
+                            )
+                        }
+                        
+                        // 心情编辑
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "心情:", fontSize = 14.sp, modifier = Modifier.width(60.dp))
+                            TextField(
+                                value = editMood,
+                                onValueChange = { editMood = it },
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text(text = "请输入当前心情") }
+                            )
+                        }
+                        
+                        // 偏好编辑
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "偏好:", fontSize = 14.sp, modifier = Modifier.width(60.dp))
+                            TextField(
+                                value = editPreference,
+                                onValueChange = { editPreference = it },
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text(text = "请输入音乐偏好") }
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Text(
+                        text = "保存",
+                        color = Color(0xFF4CAF50),
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .clickable {
+                                // 保存修改
+                                mbti = editMbti
+                                mood = editMood
+                                preference = editPreference
+                                isEditMode = false
+                            }
+                    )
+                },
+                dismissButton = {
+                    Text(
+                        text = "取消",
+                        color = Color(0xFFF44336),
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .clickable {
+                                isEditMode = false
+                            }
+                    )
+                }
+            )
+        }
+
         // 随心播放按钮
                         Box(
                             modifier = Modifier
@@ -210,7 +344,7 @@ fun MusicPlayerScreen(
                                     .height(80.dp)
                                     .clickable {
                                         // 点击随心播放按钮
-                                        musicRandomPlayer.analyzeImageForMusic(object : MusicRandomPlayer.OnAnalyzeCompleteListener {
+                                        musicRandomPlayer.analyzeImageForMusic(mbti, mood, preference, object : MusicRandomPlayer.OnAnalyzeCompleteListener {
                                             override fun onAnalyzeComplete(musicUrl: String?) {
                                                 if (musicUrl != null) {
                                                     // 从musicUrl中提取资源名称（去掉.ogg后缀）
