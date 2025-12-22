@@ -2,6 +2,7 @@ package com.demo.rokid_huishi_m.activities.suixinYiting
 
 import android.media.MediaPlayer
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -210,20 +211,49 @@ fun MusicPlayerScreen(
                                     .clickable {
                                         // 点击随心播放按钮
                                         musicRandomPlayer.analyzeImageForMusic(object : MusicRandomPlayer.OnAnalyzeCompleteListener {
-                                            override fun onAnalyzeComplete(musicId: Int?) {
-                                                if (musicId != null) {
-                                                    // 根据后端返回的musicId查找对应的音乐
-                                                    // 注意：这里需要根据实际情况调整，因为本地MusicItem的id是动态生成的
-                                                    // 如果后端返回的是音乐的其他标识（如名称），需要相应地修改查找逻辑
-                                                    val musicToPlay = musicList.find { it.id == musicId }
-                                                    if (musicToPlay != null) {
-                                                        // 更新当前播放的音乐
-                                                        currentMusic = musicToPlay
-                                                        // 使用同一个播放器实例播放
-                                                        musicPlayerManager.play(context, musicToPlay.resourceId) {
-                                                            isPlaying = false
+                                            override fun onAnalyzeComplete(musicUrl: String?) {
+                                                if (musicUrl != null) {
+                                                    // 从musicUrl中提取资源名称（去掉.ogg后缀）
+                                                    val resourceName = musicUrl.substringBeforeLast(".")
+                                                    Log.d("SuixinYitingActivity", "解析到的资源名称: $resourceName")
+                                                    
+                                                    // 根据资源名称查找对应的音乐
+                                                    // 使用反射获取R.raw类中的所有资源ID，查找匹配的资源
+                                                    val rawClass = R.raw::class.java
+                                                    var resourceId: Int? = null
+                                                    
+                                                    try {
+                                                        // 尝试直接通过资源名称获取资源ID
+                                                        val field = rawClass.getField(resourceName)
+                                                        resourceId = field.getInt(null)
+                                                        Log.d("SuixinYitingActivity", "找到匹配的资源ID: $resourceId")
+                                                    } catch (e: Exception) {
+                                                        // 如果直接匹配失败，遍历所有资源查找
+                                                        for (field in rawClass.fields) {
+                                                            if (field.type == Int::class.java && field.name == resourceName) {
+                                                                resourceId = field.getInt(null)
+                                                                Log.d("SuixinYitingActivity", "遍历找到匹配的资源ID: $resourceId")
+                                                                break
+                                                            }
                                                         }
-                                                        isPlaying = true
+                                                    }
+                                                    
+                                                    if (resourceId != null) {
+                                                        // 在音乐列表中查找对应的MusicItem
+                                                        val musicToPlay = musicList.find { it.resourceId == resourceId }
+                                                        if (musicToPlay != null) {
+                                                            // 更新当前播放的音乐
+                                                            currentMusic = musicToPlay
+                                                            // 使用同一个播放器实例播放
+                                                            musicPlayerManager.play(context, musicToPlay.resourceId) {
+                                                                isPlaying = false
+                                                            }
+                                                            isPlaying = true
+                                                        } else {
+                                                            Log.d("SuixinYitingActivity", "资源ID找到但未在音乐列表中找到对应项")
+                                                        }
+                                                    } else {
+                                                        Log.d("SuixinYitingActivity", "未找到匹配的资源ID")
                                                     }
                                                 } else {
                                                     // 分析失败或没有找到匹配的音乐，可以根据需要添加提示

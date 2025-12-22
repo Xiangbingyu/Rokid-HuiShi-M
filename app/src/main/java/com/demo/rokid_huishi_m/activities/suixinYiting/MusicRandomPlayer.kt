@@ -25,7 +25,7 @@ class MusicRandomPlayer {
     
     // 定义回调接口
     interface OnAnalyzeCompleteListener {
-        fun onAnalyzeComplete(musicId: Int?)
+        fun onAnalyzeComplete(musicUrl: String?)
     }
 
     // 降低图片分辨率和质量以减少Base64编码后的大小
@@ -99,7 +99,7 @@ class MusicRandomPlayer {
         // 当前使用的是IPv4地址
         // 注意：是否需要使用IPv6地址取决于后端服务器的配置和网络环境
         // 如果后端服务器只支持IPv6，请将URL修改为IPv6格式，例如：http://[2001:db8::1]:8000/llm/analyze_image/
-        val url = "http://10.252.19.241:8000/llm/analyze_image/"
+        val url = "http://10.252.39.145:8000/llm/analyze_image/"
         val mediaType = "application/json; charset=utf-8".toMediaType()
 
         Log.d(TAG, "准备发送网络请求到: $url")
@@ -137,13 +137,16 @@ class MusicRandomPlayer {
                     if (response.isSuccessful) {
                         try {
                             val jsonResponse = JSONObject(responseData)
-                            // 假设后端返回的是 music_id
-                            val musicId = jsonResponse.optInt("music_id", -1)
-                            if (musicId > 0) {
-                                Log.d(TAG, "获取到音乐ID: $musicId")
-                                onAnalyzeCompleteListener.onAnalyzeComplete(musicId)
+                            // 从result.music_recommendation中获取music_url
+                            val result = jsonResponse.optJSONObject("result")
+                            val musicRecommendation = result?.optJSONObject("music_recommendation")
+                            val musicUrl = musicRecommendation?.optString("music_url", null)
+                            
+                            if (musicUrl != null && musicUrl.isNotEmpty()) {
+                                Log.d(TAG, "获取到音乐URL: $musicUrl")
+                                onAnalyzeCompleteListener.onAnalyzeComplete(musicUrl)
                             } else {
-                                Log.d(TAG, "后端未返回有效的音乐ID")
+                                Log.d(TAG, "后端未返回有效的音乐URL")
                                 onAnalyzeCompleteListener.onAnalyzeComplete(null)
                             }
                         } catch (e: Exception) {
