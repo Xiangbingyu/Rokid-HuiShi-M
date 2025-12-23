@@ -39,6 +39,8 @@ import java.util.concurrent.TimeUnit
 class UserActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 初始化LoginManager，确保从SharedPreferences加载数据
+        LoginManager.init(applicationContext)
         enableEdgeToEdge()
         setContent {
             UserScreen()
@@ -48,11 +50,11 @@ class UserActivity : ComponentActivity() {
 
 @Composable
 fun UserScreen() {
-    // 登录状态管理
-    val (isLoggedIn, setIsLoggedIn) = remember { mutableStateOf(false) }
-    val (userName, setUserName) = remember { mutableStateOf("") }
-    val (userRole, setUserRole) = remember { mutableStateOf("") }
-    val (accessToken, setAccessToken) = remember { mutableStateOf("") }
+    // 登录状态管理 - 从LoginManager获取持久化的登录状态
+    val (isLoggedIn, setIsLoggedIn) = remember { mutableStateOf(LoginManager.isLoggedIn()) }
+    val (userName, setUserName) = remember { mutableStateOf(LoginManager.getUserName()) }
+    val (userRole, setUserRole) = remember { mutableStateOf(LoginManager.getUserRole()) }
+    val (accessToken, setAccessToken) = remember { mutableStateOf(LoginManager.getAccessToken()) }
     
     // 登录窗口状态
     val (showLoginDialog, setShowLoginDialog) = remember { mutableStateOf(false) }
