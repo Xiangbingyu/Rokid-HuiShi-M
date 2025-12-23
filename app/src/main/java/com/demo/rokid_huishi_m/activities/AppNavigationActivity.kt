@@ -22,6 +22,7 @@ import androidx.compose.ui.res.painterResource
 import com.demo.rokid_huishi_m.R
 import com.demo.rokid_huishi_m.activities.huishiCampus.HuishiCampusActivity
 import com.demo.rokid_huishi_m.activities.suixinYiting.SuixinYitingActivity
+import com.demo.rokid_huishi_m.activities.user.UserActivity
 
 class AppNavigationActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,6 +35,9 @@ class AppNavigationActivity : ComponentActivity() {
                 },
                 onSuixinYitingClick = {
                     startActivity(Intent(this, SuixinYitingActivity::class.java))
+                },
+                onMyClick = {
+                    startActivity(Intent(this, UserActivity::class.java))
                 }
             )
         }
@@ -43,37 +47,73 @@ class AppNavigationActivity : ComponentActivity() {
 @Composable
 fun AppNavigationScreen(
     onHuishiCampusClick: () -> Unit,
-    onSuixinYitingClick: () -> Unit
+    onSuixinYitingClick: () -> Unit,
+    onMyClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(16.dp)
     ) {
+        // 应用列表标题
         Text(
             text = "应用列表",
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 32.dp)
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(top = 48.dp, bottom = 32.dp)
         )
         
-        AppCard(
-            title = "慧视校园",
-            description = "校园应用",
-            onClick = onHuishiCampusClick,
-            coverImage = R.drawable.huishicampus
-        )
+        // 应用卡片区域
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            AppCard(
+                title = "慧视校园",
+                description = "校园应用",
+                onClick = onHuishiCampusClick,
+                coverImage = R.drawable.huishicampus
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            AppCard(
+                title = "随心一听",
+                description = "音乐应用",
+                onClick = onSuixinYitingClick,
+                coverImage = R.drawable.suixinyiting
+            )
+        }
         
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        AppCard(
-            title = "随心一听",
-            description = "音乐应用",
-            onClick = onSuixinYitingClick,
-            coverImage = R.drawable.suixinyiting
-        )
+        // 底部导航栏
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 32.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "主页",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black
+            )
+            Text(
+                text = "我的",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Blue,
+                modifier = Modifier
+                    .clickable { onMyClick() }
+                    .padding(8.dp)
+            )
+        }
     }
 }
 

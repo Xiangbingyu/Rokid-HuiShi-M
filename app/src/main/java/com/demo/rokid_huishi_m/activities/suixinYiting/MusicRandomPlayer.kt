@@ -96,9 +96,6 @@ class MusicRandomPlayer {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
-        // 当前使用的是IPv4地址
-        // 注意：是否需要使用IPv6地址取决于后端服务器的配置和网络环境
-        // 如果后端服务器只支持IPv6，请将URL修改为IPv6格式，例如：http://[2001:db8::1]:8000/llm/analyze_image/
         val url = "http://10.252.12.20:8000/llm/analyze_image/"
         val mediaType = "application/json; charset=utf-8".toMediaType()
 
