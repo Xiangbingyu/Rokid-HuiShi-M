@@ -1,5 +1,6 @@
 package com.demo.rokid_huishi_m.activities.user
 
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -21,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -61,7 +63,67 @@ fun UserScreen() {
     val (showLoginDialog, setShowLoginDialog) = remember { mutableStateOf(false) }
     val (userId, setUserId) = remember { mutableStateOf("") }
     val (password, setPassword) = remember { mutableStateOf("") }
-    val (deviceId, setDeviceId) = remember { mutableStateOf("AR001") }
+    
+    // 从SharedPreferences获取设备名称作为deviceId
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val sharedPreferences = context.getSharedPreferences("record", Context.MODE_PRIVATE)
+    val deviceId = remember { sharedPreferences.getString("record_name", "AR001") ?: "AR001" }
+    
+    // 设备下线请求
+    fun setDeviceOffline(accessToken: String, deviceId: String) {
+        val client = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
+        
+        val url = "http://10.252.22.148:8000/system/device-offline"
+        val mediaType = "application/json; charset=utf-8".toMediaType()
+        
+        val requestBody = JSONObject()
+        requestBody.put("device_id", deviceId)
+        val requestBodyString = requestBody.toString().toRequestBody(mediaType)
+        
+        Log.d("UserActivity", "发送设备下线请求数据: ${requestBody.toString()}")
+        
+        val request = Request.Builder()
+            .url(url)
+            .post(requestBodyString)
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer $accessToken")
+            .build()
+        
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e("UserActivity", "设备下线请求失败 - ${e.message}", e)
+            }
+            
+            override fun onResponse(call: Call, response: Response) {
+                val responseBody = response.body
+                if (responseBody != null) {
+                    val responseData = responseBody.string()
+                    Log.d("UserActivity", "设备下线响应: $responseData")
+                    
+                    if (response.isSuccessful) {
+                        Log.d("UserActivity", "设备下线成功")
+                    } else {
+                        Log.e("UserActivity", "设备下线失败，状态码: ${response.code}")
+                    }
+                }
+            }
+        })
+    }
+    
+    // 检查token是否过期，如果过期则自动下线设备并清除登录信息
+    LaunchedEffect(Unit) {
+        if (isLoggedIn && LoginManager.isAccessTokenExpired()) {
+            setDeviceOffline(accessToken, deviceId)
+            LoginManager.clearLoginInfo()
+            setIsLoggedIn(false)
+            setUserName("")
+            setUserRole("")
+            setAccessToken("")
+        }
+    }
     
     // 处理登录按钮点击
     fun handleLoginClick() {
@@ -196,6 +258,16 @@ fun UserScreen() {
         })
     }
     
+    // 处理退出登录
+    fun handleLogout() {
+        setDeviceOffline(accessToken, deviceId)
+        LoginManager.clearLoginInfo()
+        setIsLoggedIn(false)
+        setUserName("")
+        setUserRole("")
+        setAccessToken("")
+    }
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -228,6 +300,16 @@ fun UserScreen() {
                 fontSize = 16.sp,
                 color = androidx.compose.ui.graphics.Color.Green,
                 modifier = Modifier.padding(top = 8.dp)
+            )
+            Text(
+                text = "退出登录",
+                fontSize = 16.sp,
+                color = androidx.compose.ui.graphics.Color.Red,
+                modifier = Modifier
+                    .padding(top = 16.dp)
+                    .clickable {
+                        handleLogout()
+                    }
             )
         } else {
             Text(
