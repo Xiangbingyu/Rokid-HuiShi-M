@@ -68,6 +68,55 @@ fun UserScreen() {
         setShowLoginDialog(true)
     }
     
+    // 设备上线请求
+    fun setDeviceOnline(accessToken: String, userId: String, deviceId: String) {
+        val client = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
+        
+        val url = "http://10.252.22.148:8000/system/device-online"
+        val mediaType = "application/json; charset=utf-8".toMediaType()
+        
+        // 创建请求体
+        val requestBody = JSONObject()
+        requestBody.put("device_id", deviceId)
+        requestBody.put("wearer_user_id", userId)
+        requestBody.put("location", "测试位置")
+        val requestBodyString = requestBody.toString().toRequestBody(mediaType)
+        
+        Log.d("UserActivity", "发送设备上线请求数据: ${requestBody.toString()}")
+        
+        // 创建请求
+        val request = Request.Builder()
+            .url(url)
+            .post(requestBodyString)
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer $accessToken")
+            .build()
+        
+        // 发送异步请求
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e("UserActivity", "设备上线请求失败 - ${e.message}", e)
+            }
+            
+            override fun onResponse(call: Call, response: Response) {
+                val responseBody = response.body
+                if (responseBody != null) {
+                    val responseData = responseBody.string()
+                    Log.d("UserActivity", "设备上线响应: $responseData")
+                    
+                    if (response.isSuccessful) {
+                        Log.d("UserActivity", "设备上线成功")
+                    } else {
+                        Log.e("UserActivity", "设备上线失败，状态码: ${response.code}")
+                    }
+                }
+            }
+        })
+    }
+    
     // 处理登录请求
     fun handleLoginRequest() {
         // 创建OkHttpClient
@@ -76,7 +125,7 @@ fun UserScreen() {
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
         
-        val url = "http://10.252.73.145:8000/auth/login"
+        val url = "http://10.252.22.148:8000/auth/login"
         val mediaType = "application/json; charset=utf-8".toMediaType()
         
         // 创建请求体
@@ -133,6 +182,9 @@ fun UserScreen() {
                             setShowLoginDialog(false)
                             
                             Log.d("UserActivity", "登录成功，用户名: $name, 角色: $role")
+                            
+                            // 调用设备上线API
+                            setDeviceOnline(token, userId, deviceId)
                         } catch (e: Exception) {
                             Log.e("UserActivity", "JSON解析失败 - ${e.message}", e)
                         }

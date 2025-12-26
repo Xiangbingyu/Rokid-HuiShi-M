@@ -124,6 +124,8 @@ class SuixinYitingActivity : ComponentActivity() {
         val resourceNameToDisplayName = mapOf(
             // 英文歌曲
             "aslove_my_girl_l" to "Aslove - My Girl",
+            "athletics_i_l" to "Athletics - I",
+            "athletics_ii_l" to "Athletics - II",
             "daya_hide_away_l" to "Daya - Hide Away",
             "lil_future_jingjicang_l" to "Lil Future - 经济舱",
             "shawn_mendes_treat_you_better_l" to "Shawn Mendes - Treat You Better",
@@ -182,7 +184,26 @@ fun MusicPlayerScreen(
     musicRandomPlayer: MusicRandomPlayer
 ) {
     var currentMusic by remember { mutableStateOf<MusicItem?>(null) }
+    var currentMusicIndex by remember { mutableIntStateOf(-1) }
     var isPlaying by remember { mutableStateOf(false) }
+    var isFromRandomPlay by remember { mutableStateOf(false) }
+    
+    // 播放音乐并设置完成回调
+    fun playMusic(musicItem: MusicItem) {
+        currentMusic = musicItem
+        currentMusicIndex = musicList.indexOf(musicItem)
+        musicPlayerManager.play(context, musicItem.resourceId) {
+            isPlaying = false
+            // 如果不是来自随心播放，自动播放下一首
+            if (!isFromRandomPlay) {
+                val nextIndex = (currentMusicIndex + 1) % musicList.size
+                val nextMusic = musicList[nextIndex]
+                playMusic(nextMusic)
+                isPlaying = true
+            }
+        }
+        isPlaying = true
+    }
     
     // 用户偏好设置状态
     var mbti by remember { mutableStateOf("infp") }
@@ -344,56 +365,58 @@ fun MusicPlayerScreen(
                                     .height(80.dp)
                                     .clickable {
                                         // 点击随心播放按钮
-                                        musicRandomPlayer.analyzeImageForMusic(mbti, mood, preference, object : MusicRandomPlayer.OnAnalyzeCompleteListener {
-                                            override fun onAnalyzeComplete(musicUrl: String?) {
-                                                if (musicUrl != null) {
-                                                    // 从musicUrl中提取资源名称（去掉.ogg后缀）
-                                                    val resourceName = musicUrl.substringBeforeLast(".")
-                                                    Log.d("SuixinYitingActivity", "解析到的资源名称: $resourceName")
-                                                    
-                                                    // 根据资源名称查找对应的音乐
-                                                    // 使用反射获取R.raw类中的所有资源ID，查找匹配的资源
-                                                    val rawClass = R.raw::class.java
-                                                    var resourceId: Int? = null
-                                                    
-                                                    try {
-                                                        // 尝试直接通过资源名称获取资源ID
-                                                        val field = rawClass.getField(resourceName)
+                                musicRandomPlayer.analyzeImageForMusic(mbti, mood, preference, object : MusicRandomPlayer.OnAnalyzeCompleteListener {
+                                    override fun onAnalyzeComplete(musicUrl: String?) {
+                                        if (musicUrl != null) {
+                                            // 从musicUrl中提取资源名称（去掉.ogg后缀）
+                                            val resourceName = musicUrl.substringBeforeLast(".")
+                                            Log.d("SuixinYitingActivity", "解析到的资源名称: $resourceName")
+                                            
+                                            // 根据资源名称查找对应的音乐
+                                            // 使用反射获取R.raw类中的所有资源ID，查找匹配的资源
+                                            val rawClass = R.raw::class.java
+                                            var resourceId: Int? = null
+                                            
+                                            try {
+                                                // 尝试直接通过资源名称获取资源ID
+                                                val field = rawClass.getField(resourceName)
+                                                resourceId = field.getInt(null)
+                                                Log.d("SuixinYitingActivity", "找到匹配的资源ID: $resourceId")
+                                            } catch (e: Exception) {
+                                                // 如果直接匹配失败，遍历所有资源查找
+                                                for (field in rawClass.fields) {
+                                                    if (field.type == Int::class.java && field.name == resourceName) {
                                                         resourceId = field.getInt(null)
-                                                        Log.d("SuixinYitingActivity", "找到匹配的资源ID: $resourceId")
-                                                    } catch (e: Exception) {
-                                                        // 如果直接匹配失败，遍历所有资源查找
-                                                        for (field in rawClass.fields) {
-                                                            if (field.type == Int::class.java && field.name == resourceName) {
-                                                                resourceId = field.getInt(null)
-                                                                Log.d("SuixinYitingActivity", "遍历找到匹配的资源ID: $resourceId")
-                                                                break
-                                                            }
-                                                        }
+                                                        Log.d("SuixinYitingActivity", "遍历找到匹配的资源ID: $resourceId")
+                                                        break
                                                     }
-                                                    
-                                                    if (resourceId != null) {
-                                                        // 在音乐列表中查找对应的MusicItem
-                                                        val musicToPlay = musicList.find { it.resourceId == resourceId }
-                                                        if (musicToPlay != null) {
-                                                            // 更新当前播放的音乐
-                                                            currentMusic = musicToPlay
-                                                            // 使用同一个播放器实例播放
-                                                            musicPlayerManager.play(context, musicToPlay.resourceId) {
-                                                                isPlaying = false
-                                                            }
-                                                            isPlaying = true
-                                                        } else {
-                                                            Log.d("SuixinYitingActivity", "资源ID找到但未在音乐列表中找到对应项")
-                                                        }
-                                                    } else {
-                                                        Log.d("SuixinYitingActivity", "未找到匹配的资源ID")
-                                                    }
-                                                } else {
-                                                    // 分析失败或没有找到匹配的音乐，可以根据需要添加提示
                                                 }
                                             }
-                                        })
+                                            
+                                            if (resourceId != null) {
+                                                // 在音乐列表中查找对应的MusicItem
+                                                val musicToPlay = musicList.find { it.resourceId == resourceId }
+                                                if (musicToPlay != null) {
+                                            // 更新当前播放的音乐
+                                            currentMusic = musicToPlay
+                                            currentMusicIndex = musicList.indexOf(musicToPlay)
+                                            isFromRandomPlay = true
+                                            // 使用同一个播放器实例播放
+                                            musicPlayerManager.play(context, musicToPlay.resourceId) {
+                                                isPlaying = false
+                                            }
+                                            isPlaying = true
+                                                } else {
+                                                    Log.d("SuixinYitingActivity", "资源ID找到但未在音乐列表中找到对应项")
+                                                }
+                                            } else {
+                                                Log.d("SuixinYitingActivity", "未找到匹配的资源ID")
+                                            }
+                                        } else {
+                                            // 分析失败或没有找到匹配的音乐，可以根据需要添加提示
+                                        }
+                                    }
+                                })
                                     },
                                 elevation = CardDefaults.cardElevation(4.dp),
                                 colors = CardDefaults.cardColors(
@@ -416,17 +439,14 @@ fun MusicPlayerScreen(
         LazyColumn(
             modifier = Modifier.weight(1f)
         ) {
-            items(musicList) {
-                MusicItemView(
-                    musicItem = it,
-                    onClick = {
-                        currentMusic = it
-                        musicPlayerManager.play(context, it.resourceId) {
-                            isPlaying = false
+            items(musicList) { musicItem ->
+                    MusicItemView(
+                        musicItem = musicItem,
+                        onClick = {
+                            isFromRandomPlay = false
+                            playMusic(musicItem)
                         }
-                        isPlaying = true
-                    }
-                )
+                    )
             }
         }
 

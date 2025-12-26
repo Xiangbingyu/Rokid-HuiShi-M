@@ -96,7 +96,7 @@ class MusicRandomPlayer {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
-        val url = "http://10.252.12.20:8000/llm/analyze_image/"
+        val url = "http://10.252.98.57:8000/llm/analyze_image/"
         val mediaType = "application/json; charset=utf-8".toMediaType()
 
         Log.d(TAG, "准备发送网络请求到: $url")
