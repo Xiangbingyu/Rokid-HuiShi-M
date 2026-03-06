@@ -5,8 +5,23 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
@@ -14,15 +29,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
 import com.demo.rokid_huishi_m.R
 import com.demo.rokid_huishi_m.activities.huishiCampus.HuishiCampusActivity
 import com.demo.rokid_huishi_m.activities.suixinYiting.SuixinYitingActivity
 import com.demo.rokid_huishi_m.activities.user.UserActivity
+
+private data class NavigationEntry(
+    val title: String,
+    val description: String,
+    val coverImage: Int,
+    val onClick: () -> Unit
+)
 
 class AppNavigationActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,88 +71,76 @@ fun AppNavigationScreen(
     onSuixinYitingClick: () -> Unit,
     onMyClick: () -> Unit
 ) {
+    val palette = appNavigationPalette()
+    val entries = listOf(
+        NavigationEntry(
+            title = "慧视校园",
+            description = "校园应用",
+            coverImage = R.drawable.huishicampus,
+            onClick = onHuishiCampusClick
+        ),
+        NavigationEntry(
+            title = "随心一听",
+            description = "音乐应用",
+            coverImage = R.drawable.suixinyiting,
+            onClick = onSuixinYitingClick
+        )
+    )
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .background(palette.background)
     ) {
-        // 应用列表标题
-        Text(
-            text = "应用列表",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .padding(top = 48.dp, bottom = 32.dp)
+        HeaderBar(
+            title = "应用列表",
+            palette = palette
         )
         
-        // 应用卡片区域
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
-            verticalArrangement = Arrangement.Center,
+                .weight(1f)
+                .padding(horizontal = 16.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            AppCard(
-                title = "慧视校园",
-                description = "校园应用",
-                onClick = onHuishiCampusClick,
-                coverImage = R.drawable.huishicampus
-            )
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            AppCard(
-                title = "随心一听",
-                description = "音乐应用",
-                onClick = onSuixinYitingClick,
-                coverImage = R.drawable.suixinyiting
-            )
+            entries.forEach { entry ->
+                AppCard(
+                    title = entry.title,
+                    description = entry.description,
+                    coverImage = entry.coverImage,
+                    onClick = entry.onClick,
+                    palette = palette
+                )
+            }
         }
-        
-        // 底部导航栏
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 32.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "主页",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black
-            )
-            Text(
-                text = "我的",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Blue,
-                modifier = Modifier
-                    .clickable { onMyClick() }
-                    .padding(8.dp)
-            )
-        }
+
+        BottomNavigationBar(
+            palette = palette,
+            onMyClick = onMyClick
+        )
     }
 }
 
 @Composable
-fun AppCard(
+private fun AppCard(
     title: String,
     description: String,
+    coverImage: Int,
     onClick: () -> Unit,
-    coverImage: Int? = null
+    palette: AppNavigationPalette
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .height(150.dp)
             .clickable { onClick() },
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, palette.border),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color.White,
+            containerColor = palette.surface,
         )
     ) {
         Column(
@@ -141,28 +150,97 @@ fun AppCard(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            coverImage?.let {
-                Image(
-                    painter = painterResource(id = it),
-                    contentDescription = title,
-                    modifier = Modifier
-                        .height(80.dp)
-                        .width(80.dp)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-            }
+            Image(
+                painter = painterResource(id = coverImage),
+                contentDescription = title,
+                modifier = Modifier
+                    .height(80.dp)
+                    .width(80.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = title,
-                fontSize = 20.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.Black
+                color = palette.textMain
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = description,
-                fontSize = 14.sp,
-                color = Color.Gray
+                fontSize = 13.sp,
+                color = palette.textMuted
             )
         }
+    }
+}
+
+@Composable
+private fun BottomNavigationBar(
+    palette: AppNavigationPalette,
+    onMyClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 24.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "主页",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = palette.textMain
+        )
+        Text(
+            text = "我的",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = palette.primary,
+            modifier = Modifier
+                .clickable(onClick = onMyClick)
+                .padding(8.dp)
+        )
+    }
+}
+
+private data class AppNavigationPalette(
+    val primary: Color,
+    val background: Color,
+    val surface: Color,
+    val textMain: Color,
+    val textMuted: Color,
+    val border: Color
+)
+
+private fun appNavigationPalette() = AppNavigationPalette(
+    primary = Color(0xFF6A5ACD),
+    background = Color(0xFFF9FAFB),
+    surface = Color(0xFFFFFFFF),
+    textMain = Color(0xFF111827),
+    textMuted = Color(0xFF6B7280),
+    border = Color(0xFFE5E7EB)
+)
+
+@Composable
+private fun HeaderBar(
+    title: String,
+    palette: AppNavigationPalette
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(palette.surface)
+            .border(BorderStroke(1.dp, palette.border))
+            .statusBarsPadding()
+            .padding(top = 12.dp, bottom = 20.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = title,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = palette.textMain
+        )
     }
 }

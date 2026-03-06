@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Connected Device Controls</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography,container-queries"></script>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            primary: "#725AC1", // Updated Purple color
+            "background-light": "#F8F9FA",
+            "background-dark": "#121212",
+            "surface-light": "#FFFFFF",
+            "surface-dark": "#1E1E1E",
+            "text-main-light": "#1A1A1A",
+            "text-main-dark": "#E0E0E0",
+            "text-muted-light": "#666666",
+            "text-muted-dark": "#A0A0A0",
+            "border-light": "#E0E0E0",
+            "border-dark": "#333333"
+          },
+          fontFamily: {
+            display: ["-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica", "Arial", "sans-serif"],
+          },
+          borderRadius: {
+            DEFAULT: "12px",
+            'full': "9999px",
+          },
+        },
+      },
+    };
+  </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-text-main-light dark:text-text-main-dark font-display h-screen flex flex-col antialiased">
+<header class="pt-12 pb-4 px-6 bg-surface-light dark:bg-surface-dark shadow-sm">
+<h1 class="text-xl font-semibold text-center">Device Recorded</h1>
+</header>
+<main class="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+<section class="bg-surface-light dark:bg-surface-dark rounded-2xl p-6 shadow-sm border border-border-light dark:border-border-dark space-y-4">
+<div class="flex flex-col sm:flex-row sm:justify-between sm:items-baseline gap-1">
+<span class="text-sm font-medium text-text-muted-light dark:text-text-muted-dark">Device Name</span>
+<span class="text-base font-semibold">Glasses_9537</span>
+</div>
+<hr class="border-border-light dark:border-border-dark"/>
+<div class="flex flex-col sm:flex-row sm:justify-between sm:items-baseline gap-1">
+<span class="text-sm font-medium text-text-muted-light dark:text-text-muted-dark">MAC Address</span>
+<span class="text-base font-mono">AC:86:D1:54:EC:E3</span>
+</div>
+<hr class="border-border-light dark:border-border-dark"/>
+<div class="flex flex-col gap-1">
+<span class="text-sm font-medium text-text-muted-light dark:text-text-muted-dark">UUID</span>
+<span class="text-sm font-mono break-all text-primary dark:text-primary/90">58de790d-16ee-4580-9815-0974fc635ce4</span>
+</div>
+</section>
+<div class="flex items-center justify-center gap-2 py-4">
+<div class="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
+<span class="text-sm font-medium text-green-600 dark:text-green-400">Connected</span>
+</div>
+<div class="flex-1"></div>
+</main>
+<footer class="p-6 bg-surface-light dark:bg-surface-dark border-t border-border-light dark:border-border-dark pb-8">
+<div class="flex flex-col gap-4">
+<button class="w-full py-4 px-6 bg-primary hover:bg-primary/90 text-white rounded-full font-semibold text-lg transition-colors shadow-md flex items-center justify-center gap-2">
+<span class="material-icons text-xl">link_off</span>
+        Disconnect
+      </button>
+<button class="w-full py-4 px-6 bg-primary hover:bg-primary/90 text-white rounded-full font-semibold text-lg transition-colors shadow-md flex items-center justify-center gap-2">
+<span class="material-icons text-xl">visibility</span>
+        To Use Glasses
+      </button>
+</div>
+</footer>
+
+</body></html>

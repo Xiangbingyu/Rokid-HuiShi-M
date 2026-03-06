@@ -11,17 +11,21 @@ import android.content.Intent
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.content.edit
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rokid.cxr.client.extend.CxrApi
 import com.rokid.cxr.client.extend.callbacks.BluetoothStatusCallback
 import com.rokid.cxr.client.utils.ValueUtil
 import com.demo.rokid_huishi_m.dataBeans.CONSTANT
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 data class DeviceItem(
@@ -33,13 +37,17 @@ data class DeviceItem(
 
 class BluetoothIniViewModel : ViewModel() {
 
-    private val TAG = "BluetoothIniViewModel"
+    private val tag = "BluetoothIniViewModel"
+    private val recordPrefName = "record"
+    private val recordNameKey = "record_name"
+    private val recordUuidKey = "record_uuid"
+    private val recordMacAddressKey = "record_mac_address"
 
     private val _recordState: MutableStateFlow<Boolean> = MutableStateFlow(false)
     val recordState: StateFlow<Boolean> = _recordState.asStateFlow()
 
-    private val isScanning: MutableStateFlow<Boolean> = MutableStateFlow(false)
-    val isScanningState: StateFlow<Boolean> = isScanning.asStateFlow()
+    private val _isScanning: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    val isScanningState: StateFlow<Boolean> = _isScanning.asStateFlow()
 
     private val _devicesList: MutableStateFlow<List<DeviceItem>> = MutableStateFlow(emptyList())
     val devicesList: StateFlow<List<DeviceItem>> = _devicesList.asStateFlow()
@@ -59,132 +67,79 @@ class BluetoothIniViewModel : ViewModel() {
     private val _connected: MutableStateFlow<Boolean> = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = _connected.asStateFlow()
 
-    val toConnect = MutableLiveData<Boolean>()
+    private val _connectRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val connectRequests: SharedFlow<Unit> = _connectRequests.asSharedFlow()
 
-    // Bluetooth connection state callback
     private val connectionState = object : BluetoothStatusCallback {
-        /**
-         * Called when a Bluetooth device connects or disconnects
-         * @param uuid The UUID of the device
-         * @param macAddress The MAC address of the device
-         * @param p2 rokid account, do not use it if you don't need it
-         * @param glassesType Type of glasses, 0 -- non-display, 1 -- have display
-         */
         override fun onConnectionInfo(
             uuid: String?,
             macAddress: String?,
             p2: String?,
             glassesType: Int
         ) {
-            Log.d(TAG, "onConnectionInfo: uuid=$uuid, macAddress=$macAddress, p2=$p2, p3=${if (glassesType == 1) "Display glasses" else "Non-display glasses"}")
-            // Update connection status first
             val isActuallyConnected = CxrApi.getInstance().isBluetoothConnected
             _connected.value = isActuallyConnected
             _connecting.value = false
-            
-            // Check if device info matches recorded info
-            if (_recordUUID.value == (uuid ?: "error") && _recordMacAddress.value == (macAddress
-                    ?: "error")
-            ) {
-                Log.d(TAG, "Device matches recorded info")
-                // If device is not connected, post toConnect
-                if (!isActuallyConnected) {
-                    Log.d(TAG, "Device not connected, posting toConnect")
-                    toConnect.postValue(true)
-                } else {
-                    Log.d(TAG, "Device already connected")
-                }
-            } else { // If device info does not match, update records and post toConnect
-                Log.d(TAG, "New device info received")
-                uuid?.let { u ->
-                    macAddress?.let { m ->
-                        Log.d(TAG, "Updating records and posting toConnect")
-                        _recordUUID.value = u
-                        _recordMacAddress.value = m
-                        toConnect.postValue(true)
-                    }
-                }
+
+            val glassesTypeLabel = if (glassesType == 1) "Display glasses" else "Non-display glasses"
+            Log.d(tag, "onConnectionInfo: uuid=$uuid, macAddress=$macAddress, p2=$p2, p3=$glassesTypeLabel")
+
+            uuid?.let { _recordUUID.value = it }
+            macAddress?.let { _recordMacAddress.value = it }
+
+            if (!isActuallyConnected && !_recordUUID.value.isNullOrBlank() && !_recordMacAddress.value.isNullOrBlank()) {
+                viewModelScope.launch { _connectRequests.emit(Unit) }
             }
         }
 
-        /**
-         * Called when a Bluetooth device connects successfully
-         *
-         */
         override fun onConnected() {
-            Log.d(TAG, "Bluetooth device connected successfully")
+            Log.d(tag, "Bluetooth device connected successfully")
             _devicesList.value = emptyList()
             _connected.value = true
             _connecting.value = false
         }
 
-        /**
-         * Called when a Bluetooth device disconnects
-         *
-         */
         override fun onDisconnected() {
-            Log.d(TAG, "Bluetooth device disconnected")
+            Log.d(tag, "Bluetooth device disconnected")
             _connecting.value = false
             _connected.value = false
         }
 
-        /**
-         * Called when a Bluetooth device connection fails
-         * @param p0 The error code:
-         *  @see ValueUtil.CxrBluetoothErrorCode.PARAM_INVALID  Invalid parameter
-         *  @see ValueUtil.CxrBluetoothErrorCode.BLE_CONNECT_FAILED Bluetooth connection failed
-         *  @see ValueUtil.CxrBluetoothErrorCode.SOCKET_CONNECT_FAILED Socket connection failed
-         *  @see ValueUtil.CxrBluetoothErrorCode.SN_CHECK_FAILED Serial number check failed
-         *  @see ValueUtil.CxrBluetoothErrorCode.UNKNOWN Unknown error
-         */
         override fun onFailed(p0: ValueUtil.CxrBluetoothErrorCode?) {
-            Log.e(TAG, "Bluetooth connection failed with error: $p0")
+            Log.e(tag, "Bluetooth connection failed with error: $p0")
             _connecting.value = false
             _connected.value = false
         }
 
     }
 
-    private var isCheckingConnection = false
-    
+    private var connectionCheckJob: Job? = null
+
     init {
-        _recordState.value = false
         startConnectionCheck()
     }
-    
-    /**
-     * Start periodic connection status check
-     */
+
     private fun startConnectionCheck() {
-        if (isCheckingConnection) return
-        
-        isCheckingConnection = true
-        viewModelScope.launch {
-            while (isCheckingConnection) {
-                // Check connection status every 1 second
-                checkConnection()
+        if (connectionCheckJob != null) return
+        connectionCheckJob = viewModelScope.launch {
+            while (isActive) {
+                refreshConnectionStatus()
                 delay(1000)
             }
         }
     }
-    
-    /**
-     * Stop periodic connection status check
-     */
+
     private fun stopConnectionCheck() {
-        isCheckingConnection = false
+        connectionCheckJob?.cancel()
+        connectionCheckJob = null
     }
     
     override fun onCleared() {
         super.onCleared()
         stopConnectionCheck()
     }
-    // Callback for BLE scan
+
     private val bleScannerCallback: ScanCallback = object : ScanCallback() {
-        /**
-         * Called when a BLE device is found
-         *
-         */
         @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: android.bluetooth.le.ScanResult) {
             super.onScanResult(callbackType, result)
@@ -192,82 +147,71 @@ class BluetoothIniViewModel : ViewModel() {
             val name = device.name ?: "Unknown"
             val macAddress = device.address
             val rssi = result.rssi
-            Log.d(TAG, "Found BLE device: name=$name, address=$macAddress, rssi=$rssi")
+            Log.d(tag, "Found BLE device: name=$name, address=$macAddress, rssi=$rssi")
             addDevice(device, rssi)
         }
 
-        /**
-         * Called when a BLE scan fails
-         *
-         */
         override fun onScanFailed(errorCode: Int) {
-            Log.e(TAG, "BLE scan failed with error code: $errorCode")
+            Log.e(tag, "BLE scan failed with error code: $errorCode")
         }
     }
 
-    /**
-     * Handle BLE scanning status, if it is currently scanning, stop it, otherwise start a new scan
-     * @param bleScanner The BluetoothLeScanner instance
-     */
     @SuppressLint("MissingPermission")
-    fun handleScan(bleScanner: BluetoothLeScanner?) {
-        if (isScanning.value) {
-            Log.d(TAG, "Stopping BLE scan")
-            bleScanner?.stopScan(bleScannerCallback)
-            isScanning.value = false
-        } else {
-            Log.d(TAG, "Starting BLE scan with service UUID: ${CONSTANT.SERVICE_UUID}")
-            // Clear existing devices
-            clearDevices()
-            // Create a filter to match devices with the specified service UUID
-            val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid.fromString(CONSTANT.SERVICE_UUID))
-                .build()
-            val scanSettings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
-            bleScanner?.startScan(mutableListOf(filter), scanSettings, bleScannerCallback)
-            isScanning.value = true
+    fun toggleScan(bleScanner: BluetoothLeScanner?) {
+        if (_isScanning.value) {
+            stopScan(bleScanner)
+            return
         }
+        Log.d(tag, "Starting BLE scan with service UUID: ${CONSTANT.SERVICE_UUID}")
+        clearDevices()
+        val filter = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid.fromString(CONSTANT.SERVICE_UUID))
+            .build()
+        val scanSettings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
+        bleScanner?.startScan(mutableListOf(filter), scanSettings, bleScannerCallback)
+        _isScanning.value = true
     }
 
-    /**
-     * Check if a record exists
-     */
+    @SuppressLint("MissingPermission")
+    fun stopScan(bleScanner: BluetoothLeScanner?) {
+        if (!_isScanning.value) return
+        Log.d(tag, "Stopping BLE scan")
+        bleScanner?.stopScan(bleScannerCallback)
+        _isScanning.value = false
+    }
+
+    @SuppressLint("MissingPermission")
+    fun handleScan(bleScanner: BluetoothLeScanner?) = toggleScan(bleScanner)
+
     fun checkRecordState(context: Context) {
-        Log.d(TAG, "Checking record state")
-        // Read record from shared preferences
-        val sharedPreferences = context.getSharedPreferences("record", Context.MODE_PRIVATE)
-        val recordName = sharedPreferences.getString("record_name", null)
-        val recordUUID = sharedPreferences.getString("record_uuid", null)
-        val recordMacAddress = sharedPreferences.getString("record_mac_address", null)
+        val sharedPreferences =
+            context.applicationContext.getSharedPreferences(recordPrefName, Context.MODE_PRIVATE)
+        val recordName = sharedPreferences.getString(recordNameKey, null)
+        val recordUUID = sharedPreferences.getString(recordUuidKey, null)
+        val recordMacAddress = sharedPreferences.getString(recordMacAddressKey, null)
         recordName?.let { name ->
             recordUUID?.let { uuid ->
                 recordMacAddress?.let { mac ->
-                    Log.d(TAG, "Record found: name=$name, uuid=$uuid, mac=$mac")
                     this._recordName.value = name
                     this._recordUUID.value = uuid
                     this._recordMacAddress.value = mac
                     _recordState.value = true
-                    _connecting.value = false
                     return
                 }
             }
         }
-        Log.d(TAG, "No record found")
         _recordState.value = false
     }
 
-    /**
-     * To record device info when a connection is successful
-     */
     fun record(context: Context) {
-        Log.d(
-            TAG,
-            "Recording device info: name=${_recordName.value}, uuid=${_recordUUID.value}, mac=${_recordMacAddress.value}"
-        )
-        val sharedPreferences = context.getSharedPreferences("record", Context.MODE_PRIVATE)
+        val sharedPreferences =
+            context.applicationContext.getSharedPreferences(recordPrefName, Context.MODE_PRIVATE)
         sharedPreferences.edit {
-            putString("record_name", _recordName.value)
-            putString("record_uuid", _recordUUID.value)
-            putString("record_mac_address", _recordMacAddress.value)
+            putString(recordNameKey, _recordName.value)
+            putString(recordUuidKey, _recordUUID.value)
+            putString(recordMacAddressKey, _recordMacAddress.value)
         }
         _recordState.value = true
     }
@@ -280,19 +224,12 @@ class BluetoothIniViewModel : ViewModel() {
      */
     @SuppressLint("MissingPermission")
     fun addDevice(device: BluetoothDevice, rssi: Int) {
-        Log.d(
-            TAG,
-            "Adding device: name=${device.name ?: "Unknown"}, address=${device.address}, rssi=$rssi"
-        )
-        // Check if th device found is  already in the found device list
         val existingDevice = _devicesList.value.find { it.device == device }
         if (existingDevice != null) {
-            Log.d(TAG, "Device already exists, updating RSSI")
             updateRssi(device, rssi)
         } else {
             val newDevice = DeviceItem(device, device.name ?: "Unknown", device.address, rssi)
             _devicesList.value += newDevice
-            Log.d(TAG, "New device added to list, total devices: ${_devicesList.value.size}")
         }
     }
 
@@ -302,7 +239,6 @@ class BluetoothIniViewModel : ViewModel() {
      * @param rssi The new RSSI value
      */
     fun updateRssi(device: BluetoothDevice, rssi: Int) {
-        Log.d(TAG, "Updating RSSI for device ${device.address}: $rssi")
         _devicesList.value = _devicesList.value.map {
             if (it.device == device) {
                 it.copy(rssi = rssi)
@@ -316,7 +252,6 @@ class BluetoothIniViewModel : ViewModel() {
      * Clear the device list
      */
     fun clearDevices() {
-        Log.d(TAG, "Clearing device list")
         _devicesList.value = emptyList()
     }
 
@@ -324,26 +259,24 @@ class BluetoothIniViewModel : ViewModel() {
      * Connect to Glasses's socket, the last step of the connection process
      */
     fun connectBTSocket(context: Context) {
-        Log.d(
-            TAG,
-            "Reconnecting to device: uuid=${_recordUUID.value}, mac=${_recordMacAddress.value}"
-        )
-        // Set connecting state immediately
+        val uuid = _recordUUID.value
+        val mac = _recordMacAddress.value
+        if (uuid.isNullOrBlank() || mac.isNullOrBlank()) {
+            _connecting.value = false
+            return
+        }
         _connecting.value = true
-        // Reconnect/Connect(first time) to the device
         try {
             CxrApi.getInstance().connectBluetooth(
-                context,
-                _recordUUID.value ?: "error", // uuid from record or BluetoothStatusCallback::onConnectionInfo
-                _recordMacAddress.value ?: "error", // mac from record or BluetoothStatusCallback::onConnectionInfo
-                connectionState, // callback for connection state
-                readRawFile(context), // SN authentication file
-                CONSTANT.CLIENT_SECRET.replace("-", "") // client secret
+                context.applicationContext,
+                uuid,
+                mac,
+                connectionState,
+                readRawFile(context.applicationContext),
+                CONSTANT.CLIENT_SECRET.replace("-", "")
             )
-        }catch (e: Exception){
-            Log.d(TAG, "Error: ${e.message}")
-            e.printStackTrace()
-            // Reset connecting state if error occurs
+        } catch (e: Exception) {
+            Log.e(tag, "connectBluetooth error: ${e.message}", e)
             _connecting.value = false
         }
 
@@ -354,29 +287,24 @@ class BluetoothIniViewModel : ViewModel() {
      * Init Bluetooth connection after a device in fount device list is clicked
      * @param deviceItem The selected device item
      */
-    fun deviceClicked(context: Context, deviceItem: DeviceItem?) {
-        deviceItem?.let {
-            Log.d(TAG, "Device clicked: name=${it.name}, address=${it.macAddress}")
-            _recordName.value = it.name
-            CxrApi.getInstance().initBluetooth(context, it.device, connectionState)
-            _connecting.value = true
-        }
+    fun deviceClicked(context: Context, deviceItem: DeviceItem) {
+        _recordName.value = deviceItem.name
+        _connecting.value = true
+        CxrApi.getInstance().initBluetooth(context.applicationContext, deviceItem.device, connectionState)
     }
 
     /**
      * Read the SN authentication file
      */
     @Throws(Exception::class)
-    fun readRawFile(context: Context): ByteArray{
-        Log.d(TAG, "Reading raw file")
+    fun readRawFile(context: Context): ByteArray {
         try {
             val inputStream =
                 context.resources.openRawResource(CONSTANT.getSNResource())
             val bytes = inputStream.readBytes()
-            Log.d(TAG, "Read ${bytes.size} bytes from raw file")
             return bytes
-        }catch (e: Exception){
-            Log.e(TAG, "Error reading raw file: ${e.message}")
+        } catch (e: Exception) {
+            Log.e(tag, "Error reading raw file: ${e.message}", e)
             throw Exception("Error reading raw file")
         }
     }
@@ -385,28 +313,23 @@ class BluetoothIniViewModel : ViewModel() {
      * Disconnect from the Bluetooth socket
      */
     fun disconnect() {
-        Log.d(TAG, "Disconnecting Bluetooth")
-        // Reset connection states immediately
         _connecting.value = false
         _connected.value = false
         CxrApi.getInstance().deinitBluetooth()
     }
     
-    /**
-     * Switch to the usage selection activity
-     */
-    fun toUseGlasses(context: Context){
-        // 跳转到应用导航页面
-        context.startActivity(Intent(context, com.demo.rokid_huishi_m.activities.AppNavigationActivity::class.java))
+    fun toUseGlasses(context: Context) {
+        context.startActivity(
+            Intent(
+                context,
+                com.demo.rokid_huishi_m.activities.AppNavigationActivity::class.java
+            )
+        )
     }
     
-    /**
-     * Check the connection status
-     */
-    fun checkConnection() {
+    fun refreshConnectionStatus() {
         val isConnected = CxrApi.getInstance().isBluetoothConnected
         _connected.value = isConnected
-        _connecting.value = false
-        Log.d(TAG, "checkConnection: isConnected=$isConnected")
+        if (isConnected) _connecting.value = false
     }
 }
