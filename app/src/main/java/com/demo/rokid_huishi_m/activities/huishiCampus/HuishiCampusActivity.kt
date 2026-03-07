@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import com.rokid.cxr.client.extend.CxrApi
 import com.rokid.cxr.client.extend.listeners.CustomViewListener
 import com.rokid.cxr.client.utils.ValueUtil
+import com.demo.rokid_huishi_m.activities.user.LoginManager
 
 class HuishiCampusActivity : ComponentActivity() {
     private val customViewListener = object : CustomViewListener {
@@ -44,6 +45,12 @@ class HuishiCampusActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        LoginManager.init(applicationContext)
+        if (!LoginManager.isLoggedIn()) {
+            Toast.makeText(this, "请先登录后再访问", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
         enableEdgeToEdge()
         CxrApi.getInstance().setCustomViewListener(customViewListener)
         setContent {

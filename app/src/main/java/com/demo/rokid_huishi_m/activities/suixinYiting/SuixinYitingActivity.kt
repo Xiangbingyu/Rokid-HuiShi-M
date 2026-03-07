@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaPlayer
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -56,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.demo.rokid_huishi_m.R
+import com.demo.rokid_huishi_m.activities.user.LoginManager
 
 private const val TAG = "SuixinYitingActivity"
 
@@ -117,6 +119,12 @@ class SuixinYitingActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        LoginManager.init(applicationContext)
+        if (!LoginManager.isLoggedIn()) {
+            Toast.makeText(this, "请先登录后再访问", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
         enableEdgeToEdge()
         setContent {
             MusicPlayerScreen(
