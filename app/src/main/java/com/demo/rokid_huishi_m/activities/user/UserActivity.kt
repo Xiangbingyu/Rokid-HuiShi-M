@@ -1,6 +1,5 @@
 package com.demo.rokid_huishi_m.activities.user
 
-import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -55,9 +54,8 @@ import kotlinx.coroutines.launch
 
 private const val TAG = "UserActivity"
 private const val BASE_URL = "http://10.252.22.148:8000"
-private const val RECORD_PREF_NAME = "record"
-private const val RECORD_NAME_KEY = "record_name"
-private const val DEFAULT_DEVICE_ID = "AR001"
+private const val LOGIN_URL = "https://face-arec.hdu.edu.cn/auth/login"
+private const val FIXED_DEVICE_ID = "test-device-001"
 
 class UserActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -108,15 +106,30 @@ private class UserApi(
             put("device_id", deviceId)
         }
         Log.d(TAG, "发送的登录请求数据: $payload")
-        postJson(
-            endpoint = "/auth/login",
-            payload = payload,
-            accessToken = null,
-            requestLabel = "登录请求",
-            successLabel = "登录",
-            onSuccess = { body ->
+        val requestBody = payload.toString().toRequestBody(mediaType)
+        val request = Request.Builder()
+            .url(LOGIN_URL)
+            .post(requestBody)
+            .header("Content-Type", "application/json")
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e(TAG, "登录请求失败 - ${e.message}", e)
+                onFailure(e.message ?: "登录请求失败")
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val responseData = response.body?.string().orEmpty()
+                Log.d(TAG, "登录响应: $responseData")
+                if (!response.isSuccessful) {
+                    val message = "登录失败，状态码: ${response.code}"
+                    Log.e(TAG, message)
+                    onFailure(message)
+                    return
+                }
                 runCatching {
-                    val json = JSONObject(body)
+                    val json = JSONObject(responseData)
                     LoginResult(
                         accessToken = json.optString("access_token", ""),
                         refreshToken = json.optString("refresh_token", ""),
@@ -124,13 +137,18 @@ private class UserApi(
                         role = json.optString("role", ""),
                         name = json.optString("name", "")
                     )
-                }.onSuccess(onSuccess).onFailure {
+                }.onSuccess { result ->
+                    if (result.accessToken.isBlank()) {
+                        onFailure("登录失败，access_token为空")
+                    } else {
+                        onSuccess(result)
+                    }
+                }.onFailure {
                     Log.e(TAG, "JSON解析失败 - ${it.message}", it)
                     onFailure("JSON解析失败")
                 }
-            },
-            onFailure = onFailure
-        )
+            }
+        })
     }
 
     fun setDeviceOnline(accessToken: String, userId: String, deviceId: String) {
@@ -214,13 +232,7 @@ private fun createHttpClient(): OkHttpClient {
 @Composable
 fun UserScreen() {
     val palette = userPalette()
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val sharedPreferences = remember(context) {
-        context.getSharedPreferences(RECORD_PREF_NAME, Context.MODE_PRIVATE)
-    }
-    val deviceId = remember(sharedPreferences) {
-        sharedPreferences.getString(RECORD_NAME_KEY, DEFAULT_DEVICE_ID) ?: DEFAULT_DEVICE_ID
-    }
+    val deviceId = remember { FIXED_DEVICE_ID }
     val api = remember { UserApi(createHttpClient()) }
     val uiScope = rememberCoroutineScope()
 
@@ -267,7 +279,8 @@ fun UserScreen() {
                         refreshToken = result.refreshToken,
                         expiresInSeconds = result.expiresIn,
                         userName = result.name,
-                        userRole = result.role
+                        userRole = result.role,
+                        deviceId = deviceId
                     )
                     userState = UserUiState(
                         isLoggedIn = true,

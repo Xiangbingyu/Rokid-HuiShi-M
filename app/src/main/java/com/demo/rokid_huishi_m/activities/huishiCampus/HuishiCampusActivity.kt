@@ -1,7 +1,6 @@
 package com.demo.rokid_huishi_m.activities.huishiCampus
 
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -10,106 +9,65 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rokid.cxr.client.extend.CxrApi
-import com.rokid.cxr.client.extend.listeners.CustomViewListener
-import com.rokid.cxr.client.utils.ValueUtil
-import com.demo.rokid_huishi_m.activities.user.LoginManager
 
 class HuishiCampusActivity : ComponentActivity() {
-    private val customViewListener = object : CustomViewListener {
-        override fun onIconsSent() {
-            Log.d("HuishiCampusActivity", "onIconsSent")
-        }
-
-        override fun onOpened() {
-            Log.d("HuishiCampusActivity", "onOpened")
-        }
-
-        override fun onOpenFailed(p0: Int) {
-            Log.e("HuishiCampusActivity", "onOpenFailed: $p0")
-        }
-
-        override fun onUpdated() {
-            Log.d("HuishiCampusActivity", "onUpdated")
-        }
-
-        override fun onClosed() {
-            Log.d("HuishiCampusActivity", "onClosed")
-        }
+    private var isRecognizing by mutableStateOf(false)
+    private var recognitionMessage by mutableStateOf("点击开始识别")
+    private val recognizer by lazy {
+        HuishiCampusRecognizer(
+            onRecognizingChanged = { recognizing -> isRecognizing = recognizing },
+            onMessage = { message ->
+                runOnUiThread {
+                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                }
+            },
+            onRecognitionUpdated = { message ->
+                runOnUiThread {
+                    recognitionMessage = message
+                }
+            },
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        LoginManager.init(applicationContext)
-        if (!LoginManager.isLoggedIn()) {
-            Toast.makeText(this, "请先登录后再访问", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
         enableEdgeToEdge()
-        CxrApi.getInstance().setCustomViewListener(customViewListener)
+        recognizer.attach()
         setContent {
             HuishiCampusScreen(
-                onShowOnGlassesClick = { showCampusTextOnGlasses() }
+                isRecognizing = isRecognizing,
+                recognitionMessage = recognitionMessage,
+                onStartClick = { recognizer.start() },
+                onStopClick = { recognizer.stop() }
             )
         }
     }
 
-    private fun showCampusTextOnGlasses() {
-        val selfViewJson = """
-            {
-              "type": "LinearLayout",
-              "props": {
-                "layout_width": "match_parent",
-                "layout_height": "match_parent",
-                "orientation": "vertical",
-                "gravity": "center",
-                "backgroundColor": "#FF000000"
-              },
-              "children": [
-                {
-                  "type": "TextView",
-                  "props": {
-                    "id": "tv_title",
-                    "layout_width": "wrap_content",
-                    "layout_height": "wrap_content",
-                    "text": "慧视校园",
-                    "textSize": "28sp",
-                    "textColor": "#FFFFFFFF",
-                    "textStyle": "bold"
-                  }
-                }
-              ]
-            }
-        """.trimIndent()
-
-        when (CxrApi.getInstance().openCustomView(selfViewJson)) {
-            ValueUtil.CxrStatus.REQUEST_SUCCEED,
-            ValueUtil.CxrStatus.REQUEST_WAITING -> {
-                Toast.makeText(this, "已发送到眼镜端", Toast.LENGTH_SHORT).show()
-            }
-
-            else -> {
-                Toast.makeText(this, "发送失败，请先确认设备已连接", Toast.LENGTH_SHORT).show()
-            }
-        }
+    override fun onStop() {
+        recognizer.pause()
+        super.onStop()
     }
 
     override fun onDestroy() {
-        CxrApi.getInstance().closeCustomView()
-        CxrApi.getInstance().setCustomViewListener(null)
+        recognizer.release()
         super.onDestroy()
     }
 }
 
 @Composable
 fun HuishiCampusScreen(
-    onShowOnGlassesClick: () -> Unit
+    isRecognizing: Boolean,
+    recognitionMessage: String,
+    onStartClick: () -> Unit,
+    onStopClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -128,9 +86,18 @@ fun HuishiCampusScreen(
             text = "校园应用页面",
             fontSize = 18.sp
         )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = recognitionMessage,
+            fontSize = 14.sp
+        )
         Spacer(modifier = Modifier.height(20.dp))
-        Button(onClick = onShowOnGlassesClick) {
-            Text(text = "在眼镜端显示“慧视校园”")
+        Button(
+            onClick = {
+                if (isRecognizing) onStopClick() else onStartClick()
+            }
+        ) {
+            Text(text = if (isRecognizing) "停止识别" else "开始识别")
         }
     }
 }

@@ -11,6 +11,8 @@ object LoginManager {
     private const val KEY_USER_ID = "user_id"
     private const val KEY_USER_NAME = "user_name"
     private const val KEY_USER_ROLE = "user_role"
+    private const val KEY_DEVICE_ID = "device_id"
+    private const val KEY_LAST_LOGIN_AT = "last_login_at"
     
     private var sharedPreferences: SharedPreferences? = null
     
@@ -20,6 +22,8 @@ object LoginManager {
     private var userId: String = ""
     private var userName: String = ""
     private var userRole: String = ""
+    private var deviceId: String = ""
+    private var lastLoginAt: Long = 0L
 
     fun init(context: Context) {
         if (sharedPreferences != null) return
@@ -38,6 +42,8 @@ object LoginManager {
             userId = it.getString(KEY_USER_ID, "") ?: ""
             userName = it.getString(KEY_USER_NAME, "") ?: ""
             userRole = it.getString(KEY_USER_ROLE, "") ?: ""
+            deviceId = it.getString(KEY_DEVICE_ID, "") ?: ""
+            lastLoginAt = it.getLong(KEY_LAST_LOGIN_AT, 0L)
         }
     }
 
@@ -83,6 +89,10 @@ object LoginManager {
 
     fun getUserRole(): String = userRole
 
+    fun getDeviceId(): String = deviceId
+
+    fun getLastLoginAt(): Long = lastLoginAt
+
     fun isLoggedIn(): Boolean = accessToken.isNotEmpty() && !isAccessTokenExpired()
 
     fun saveSession(
@@ -91,15 +101,19 @@ object LoginManager {
         refreshToken: String,
         expiresInSeconds: Int,
         userName: String,
-        userRole: String
+        userRole: String,
+        deviceId: String = ""
     ) {
         val expireAt = System.currentTimeMillis() + (expiresInSeconds * 1000L)
+        val loginAt = System.currentTimeMillis()
         this.userId = userId
         this.accessToken = accessToken
         this.refreshToken = refreshToken
         this.expiresIn = expireAt
         this.userName = userName
         this.userRole = userRole
+        this.deviceId = deviceId
+        this.lastLoginAt = loginAt
         prefs()?.edit()?.apply {
             putString(KEY_USER_ID, userId)
             putString(KEY_ACCESS_TOKEN, accessToken)
@@ -107,6 +121,8 @@ object LoginManager {
             putLong(KEY_EXPIRES_IN, expireAt)
             putString(KEY_USER_NAME, userName)
             putString(KEY_USER_ROLE, userRole)
+            putString(KEY_DEVICE_ID, deviceId)
+            putLong(KEY_LAST_LOGIN_AT, loginAt)
             apply()
         }
     }
@@ -118,6 +134,8 @@ object LoginManager {
         userId = ""
         userName = ""
         userRole = ""
+        deviceId = ""
+        lastLoginAt = 0L
         prefs()?.edit()?.clear()?.apply()
     }
 }

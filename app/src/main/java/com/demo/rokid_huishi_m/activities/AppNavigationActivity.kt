@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.demo.rokid_huishi_m.R
 import com.demo.rokid_huishi_m.activities.huishiCampus.HuishiCampusActivity
-import com.demo.rokid_huishi_m.activities.suixinYiting.SuixinYitingActivity
 import com.demo.rokid_huishi_m.activities.user.UserActivity
 
 private data class NavigationEntry(
@@ -54,9 +53,6 @@ class AppNavigationActivity : ComponentActivity() {
                 onHuishiCampusClick = {
                     startActivity(Intent(this, HuishiCampusActivity::class.java))
                 },
-                onSuixinYitingClick = {
-                    startActivity(Intent(this, SuixinYitingActivity::class.java))
-                },
                 onMyClick = {
                     startActivity(Intent(this, UserActivity::class.java))
                 }
@@ -68,7 +64,6 @@ class AppNavigationActivity : ComponentActivity() {
 @Composable
 fun AppNavigationScreen(
     onHuishiCampusClick: () -> Unit,
-    onSuixinYitingClick: () -> Unit,
     onMyClick: () -> Unit
 ) {
     val palette = appNavigationPalette()
@@ -78,12 +73,6 @@ fun AppNavigationScreen(
             description = "校园应用",
             coverImage = R.drawable.huishicampus,
             onClick = onHuishiCampusClick
-        ),
-        NavigationEntry(
-            title = "随心一听",
-            description = "音乐应用",
-            coverImage = R.drawable.suixinyiting,
-            onClick = onSuixinYitingClick
         )
     )
 
