@@ -1,5 +1,6 @@
 package com.demo.rokid_huishi_m.activities.user
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -40,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.demo.rokid_huishi_m.activities.AppNavigationActivity
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
@@ -63,7 +66,18 @@ class UserActivity : ComponentActivity() {
         LoginManager.init(applicationContext)
         enableEdgeToEdge()
         setContent {
-            UserScreen()
+            UserScreen(
+                onHomeClick = {
+                    startActivity(
+                        Intent(this, AppNavigationActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                    )
+                    overridePendingTransition(0, 0)
+                    finish()
+                    overridePendingTransition(0, 0)
+                }
+            )
         }
     }
 }
@@ -230,7 +244,9 @@ private fun createHttpClient(): OkHttpClient {
 }
 
 @Composable
-fun UserScreen() {
+fun UserScreen(
+    onHomeClick: () -> Unit
+) {
     val palette = userPalette()
     val deviceId = remember { FIXED_DEVICE_ID }
     val api = remember { UserApi(createHttpClient()) }
@@ -318,7 +334,7 @@ fun UserScreen() {
                 .fillMaxWidth()
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Top
         ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -390,6 +406,11 @@ fun UserScreen() {
                 )
             }
         }
+        Box(modifier = Modifier.weight(1f))
+        BottomNavigationBar(
+            palette = palette,
+            onHomeClick = onHomeClick
+        )
     }
     
     if (showLoginDialog) {
@@ -449,6 +470,47 @@ fun UserScreen() {
                         .clickable { showLoginDialog = false }
                 )
             }
+        )
+    }
+}
+
+@Composable
+private fun BottomNavigationBar(
+    palette: UserPalette,
+    onHomeClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 16.dp)
+            .background(
+                color = palette.surface,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .border(
+                border = BorderStroke(1.dp, palette.border),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "主页",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = palette.textMain,
+            modifier = Modifier
+                .clickable(onClick = onHomeClick)
+                .padding(8.dp)
+        )
+        Text(
+            text = "我的",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = palette.primary,
+            modifier = Modifier.padding(8.dp)
         )
     }
 }

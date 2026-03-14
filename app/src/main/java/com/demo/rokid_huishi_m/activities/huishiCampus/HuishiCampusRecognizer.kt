@@ -21,7 +21,6 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.Base64
 import java.util.concurrent.TimeUnit
-import kotlin.random.Random
 
 class HuishiCampusRecognizer(
     private val onRecognizingChanged: (Boolean) -> Unit,
@@ -30,13 +29,11 @@ class HuishiCampusRecognizer(
 ) {
     companion object {
         private const val TAG = "HuishiCampusRecognizer"
-        // 模拟数据开关：true时走本地随机模拟识别结果，false时走真实接口
-        private const val USE_MOCK_DATA = true
         private const val BASE_URL = "https://face-arec.hdu.edu.cn"
         private const val QUERY_ENDPOINT = "/students/query-by-photo"
         private const val DEVICE_ID = "AR-GLASS-004"
         private const val WEARER_USER_ID = "24320313"
-        private const val CAPTURE_INTERVAL_MS = 5_000L
+        private const val CAPTURE_INTERVAL_MS = 2_000L
         private const val PHOTO_QUALITY = 50
         private val PHOTO_SIZE = Size(320, 240)
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
@@ -53,6 +50,9 @@ class HuishiCampusRecognizer(
 
     private var isRecognizing = false
     private var cachedRecognition: RecognitionResult? = null
+    private var isRecognitionViewOpened = false
+    private var updateCustomViewMethodResolved = false
+    private var updateCustomViewMethodName: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val captureLoopRunnable = object : Runnable {
@@ -109,6 +109,7 @@ class HuishiCampusRecognizer(
     fun pause() {
         stop(showToast = false)
         CxrApi.getInstance().closeCustomView()
+        isRecognitionViewOpened = false
     }
 
     fun release() {
@@ -117,14 +118,6 @@ class HuishiCampusRecognizer(
     }
 
     private fun captureAndQueryStudent() {
-        // 模拟识别入口：开启后每次识别直接使用本地模拟数据，不发网络请求
-        if (USE_MOCK_DATA) {
-            val mockResult = randomMockResult()
-            applyRecognitionResult(mockResult)
-            scheduleNextCapture()
-            return
-        }
-
         val accessToken = LoginManager.getAccessToken().trim()
         if (accessToken.isBlank()) {
             onRecognitionUpdated("未检测到登录令牌，请先登录")
@@ -136,7 +129,7 @@ class HuishiCampusRecognizer(
         val pictureCallback = PhotoResultCallback { status, imageData ->
             if (status != ValueUtil.CxrStatus.RESPONSE_SUCCEED || imageData == null) {
                 Log.e(TAG, "拍照失败，状态码：$status")
-                onRecognitionUpdated("拍照失败，5秒后重试")
+                onRecognitionUpdated("拍照失败，2秒后重试")
                 scheduleNextCapture()
                 return@PhotoResultCallback
             }
@@ -150,7 +143,7 @@ class HuishiCampusRecognizer(
                 )
             }.onFailure {
                 Log.e(TAG, "图片编码失败 - ${it.message}", it)
-                onRecognitionUpdated("图片编码失败，5秒后重试")
+                onRecognitionUpdated("图片编码失败，2秒后重试")
                 scheduleNextCapture()
             }
         }
@@ -170,7 +163,7 @@ class HuishiCampusRecognizer(
 
             else -> {
                 Log.e(TAG, "拍照请求发送失败")
-                onRecognitionUpdated("拍照请求发送失败，5秒后重试")
+                onRecognitionUpdated("拍照请求发送失败，2秒后重试")
                 scheduleNextCapture()
             }
         }
@@ -197,7 +190,7 @@ class HuishiCampusRecognizer(
         HTTP_CLIENT.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Log.e(TAG, "查询学生信息失败 - ${e.message}", e)
-                onRecognitionUpdated("网络请求失败，5秒后重试")
+                onRecognitionUpdated("网络请求失败，2秒后重试")
                 scheduleNextCapture()
             }
 
@@ -205,7 +198,7 @@ class HuishiCampusRecognizer(
                 val responseBody = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
                     Log.e(TAG, "查询学生信息失败，状态码: ${response.code}, body: $responseBody")
-                    onRecognitionUpdated("识别失败(${response.code})，5秒后重试")
+                    onRecognitionUpdated("识别失败(${response.code})，2秒后重试")
                     scheduleNextCapture()
                     return
                 }
@@ -214,7 +207,7 @@ class HuishiCampusRecognizer(
                     applyRecognitionResult(recognitionResult)
                 } else {
                     Log.e(TAG, "响应解析失败，保留上次识别结果")
-                    onRecognitionUpdated("返回数据解析失败，5秒后重试")
+                    onRecognitionUpdated("返回数据解析失败，2秒后重试")
                 }
                 scheduleNextCapture()
             }
@@ -248,20 +241,30 @@ class HuishiCampusRecognizer(
         return when (studentInfo) {
             null -> "未识别到学生信息"
             is JSONObject -> {
-                val name = studentInfo.optString("name", "")
-                val studentId = studentInfo.optString("student_id", "")
-                val department = studentInfo.optString("department", "")
-                val major = studentInfo.optString("major", "")
-                val className = studentInfo.optString("class", "")
-                if (name.isBlank() && studentId.isBlank() && department.isBlank() && major.isBlank() && className.isBlank()) {
-                    valueToDisplayString(studentInfo)
+                val basicInfo = studentInfo.optJSONObject("basic_info") ?: studentInfo
+                val name = basicInfo.optString("name", "")
+                val studentId = basicInfo.optString("student_id", "")
+                val department = basicInfo.optString("department", "")
+                val major = basicInfo.optString("major", "")
+                val className = basicInfo.optString("class", "")
+                val grade = basicInfo.optString("grade", "")
+                if (
+                    name.isBlank() &&
+                    studentId.isBlank() &&
+                    department.isBlank() &&
+                    major.isBlank() &&
+                    className.isBlank() &&
+                    grade.isBlank()
+                ) {
+                    "未识别到学生基本信息"
                 } else {
                     listOf(
                         "姓名: ${name.ifBlank { "未知" }}",
                         "学号: ${studentId.ifBlank { "未知" }}",
                         "学院: ${department.ifBlank { "未知" }}",
                         "专业: ${major.ifBlank { "未知" }}",
-                        "班级: ${className.ifBlank { "未知" }}"
+                        "班级: ${className.ifBlank { "未知" }}",
+                        "年级: ${grade.ifBlank { "未知" }}"
                     ).joinToString("\n")
                 }
             }
@@ -310,33 +313,6 @@ class HuishiCampusRecognizer(
         }
     }
 
-    private fun randomMockResult(): RecognitionResult {
-        // 模拟识别结果池：后续切换真实识别时可删除或替换这里的数据
-        val mockResults = listOf(
-            RecognitionResult(
-                studentInfoText = listOf(
-                    "姓名: 陈小红",
-                    "学号: 20220003",
-                    "学院: 外国语学院",
-                    "专业: 英语",
-                    "班级: 英语2002班"
-                ).joinToString("\n"),
-                confidence = 0.92
-            ),
-            RecognitionResult(
-                studentInfoText = listOf(
-                    "姓名: 王子轩",
-                    "学号: 20230118",
-                    "学院: 计算机学院",
-                    "专业: 软件工程",
-                    "班级: 软工2301班"
-                ).joinToString("\n"),
-                confidence = 0.88
-            )
-        )
-        return mockResults[Random.nextInt(mockResults.size)]
-    }
-
     private fun applyRecognitionResult(recognitionResult: RecognitionResult) {
         val isChanged = recognitionResult != cachedRecognition
         cachedRecognition = recognitionResult
@@ -380,15 +356,23 @@ class HuishiCampusRecognizer(
                 )
             })
         }
+        isRecognitionViewOpened = false
         openCustomView(root.toString())
     }
 
     private fun showRecognitionOnGlasses(result: RecognitionResult) {
+        if (isRecognitionViewOpened && updateRecognitionContentOnGlasses(result)) {
+            return
+        }
         val root = JSONObject().apply {
-            put("type", "RelativeLayout")
+            put("type", "LinearLayout")
             put("props", JSONObject().apply {
                 put("layout_width", "match_parent")
                 put("layout_height", "match_parent")
+                put("orientation", "vertical")
+                put("gravity", "top|end")
+                put("paddingTop", "100dp")
+                put("paddingRight", "40dp")
                 put("backgroundColor", "#00000000")
             })
             put("children", JSONArray().apply {
@@ -398,12 +382,8 @@ class HuishiCampusRecognizer(
                         put("props", JSONObject().apply {
                             put("layout_width", "260dp")
                             put("layout_height", "wrap_content")
-                            put("layout_alignParentEnd", "true")
-                            put("layout_marginRight", "16dp")
-                            put("layout_marginTop", "16dp")
                             put("orientation", "vertical")
                             put("padding", "12dp")
-                            put("backgroundColor", "#AA111111")
                         })
                         put("children", JSONArray().apply {
                             put(
@@ -423,16 +403,11 @@ class HuishiCampusRecognizer(
                                 JSONObject().apply {
                                     put("type", "TextView")
                                     put("props", JSONObject().apply {
+                                        put("id", "confidence_value")
                                         put("layout_width", "wrap_content")
                                         put("layout_height", "wrap_content")
                                         put("layout_marginTop", "6dp")
-                                        put(
-                                            "text",
-                                            "置信度: ${
-                                                result.confidence?.let { String.format("%.2f", it) }
-                                                    ?: "未知"
-                                            }"
-                                        )
+                                        put("text", buildConfidenceText(result.confidence))
                                         put("textSize", "14sp")
                                         put("textColor", "#FF90CAF9")
                                     })
@@ -442,6 +417,7 @@ class HuishiCampusRecognizer(
                                 JSONObject().apply {
                                     put("type", "TextView")
                                     put("props", JSONObject().apply {
+                                        put("id", "student_info_value")
                                         put("layout_width", "wrap_content")
                                         put("layout_height", "wrap_content")
                                         put("layout_marginTop", "6dp")
@@ -456,18 +432,87 @@ class HuishiCampusRecognizer(
                 )
             })
         }
-        openCustomView(root.toString())
+        isRecognitionViewOpened = openCustomView(root.toString())
     }
 
-    private fun openCustomView(customViewJson: String) {
-        when (CxrApi.getInstance().openCustomView(customViewJson)) {
+    private fun buildConfidenceText(confidence: Double?): String {
+        return "置信度: ${confidence?.let { String.format("%.2f", it) } ?: "未知"}"
+    }
+
+    private fun updateRecognitionContentOnGlasses(result: RecognitionResult): Boolean {
+        val updatePayload = JSONArray().apply {
+            put(
+                JSONObject().apply {
+                    put("action", "update")
+                    put("id", "confidence_value")
+                    put("props", JSONObject().apply {
+                        put("text", buildConfidenceText(result.confidence))
+                    })
+                }
+            )
+            put(
+                JSONObject().apply {
+                    put("action", "update")
+                    put("id", "student_info_value")
+                    put("props", JSONObject().apply {
+                        put("text", result.studentInfoText)
+                    })
+                }
+            )
+        }
+        val updateMethodName = resolveUpdateCustomViewMethodName()
+        if (updateMethodName == null) {
+            Log.d(TAG, "未发现 updateCustomView 接口，退化为整页刷新")
+            return false
+        }
+        return runCatching {
+            val method = CxrApi.getInstance().javaClass.getMethod(updateMethodName, String::class.java)
+            val resultStatus = method.invoke(CxrApi.getInstance(), updatePayload.toString())
+            when (resultStatus) {
+                is Int -> {
+                    val isSuccess = resultStatus == ValueUtil.CxrStatus.REQUEST_SUCCEED ||
+                        resultStatus == ValueUtil.CxrStatus.REQUEST_WAITING
+                    if (!isSuccess) {
+                        Log.e(TAG, "局部更新发送失败，状态码：$resultStatus")
+                    } else {
+                        Log.d(TAG, "学生信息区域已局部更新")
+                    }
+                    isSuccess
+                }
+
+                else -> {
+                    Log.d(TAG, "学生信息区域已局部更新")
+                    true
+                }
+            }
+        }.onFailure {
+            Log.e(TAG, "局部更新失败 - ${it.message}", it)
+        }.getOrDefault(false)
+    }
+
+    private fun resolveUpdateCustomViewMethodName(): String? {
+        if (updateCustomViewMethodResolved) return updateCustomViewMethodName
+        val method = CxrApi.getInstance().javaClass.methods.firstOrNull {
+            it.name == "updateCustomView" &&
+                it.parameterTypes.size == 1 &&
+                it.parameterTypes[0].isAssignableFrom(String::class.java)
+        }
+        updateCustomViewMethodName = method?.name
+        updateCustomViewMethodResolved = true
+        return updateCustomViewMethodName
+    }
+
+    private fun openCustomView(customViewJson: String): Boolean {
+        return when (CxrApi.getInstance().openCustomView(customViewJson)) {
             ValueUtil.CxrStatus.REQUEST_SUCCEED,
             ValueUtil.CxrStatus.REQUEST_WAITING -> {
                 Log.d(TAG, "眼镜端视图发送成功")
+                true
             }
 
             else -> {
                 Log.e(TAG, "眼镜端视图发送失败")
+                false
             }
         }
     }

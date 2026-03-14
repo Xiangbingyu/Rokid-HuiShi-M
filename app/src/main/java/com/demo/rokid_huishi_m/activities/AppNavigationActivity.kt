@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -54,7 +55,14 @@ class AppNavigationActivity : ComponentActivity() {
                     startActivity(Intent(this, HuishiCampusActivity::class.java))
                 },
                 onMyClick = {
-                    startActivity(Intent(this, UserActivity::class.java))
+                    startActivity(
+                        Intent(this, UserActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                    )
+                    overridePendingTransition(0, 0)
+                    finish()
+                    overridePendingTransition(0, 0)
                 }
             )
         }
@@ -69,8 +77,8 @@ fun AppNavigationScreen(
     val palette = appNavigationPalette()
     val entries = listOf(
         NavigationEntry(
-            title = "慧视校园",
-            description = "校园应用",
+            title = "慧视校园1.0",
+            description = "校园应用 · 智能识别",
             coverImage = R.drawable.huishicampus,
             onClick = onHuishiCampusClick
         )
@@ -85,15 +93,21 @@ fun AppNavigationScreen(
             title = "应用列表",
             palette = palette
         )
-        
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .padding(horizontal = 16.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
+                .padding(horizontal = 16.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Text(
+                text = "选择应用开始体验",
+                fontSize = 14.sp,
+                color = palette.textMuted,
+                modifier = Modifier.fillMaxWidth()
+            )
             entries.forEach { entry ->
                 AppCard(
                     title = entry.title,
@@ -123,41 +137,53 @@ private fun AppCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(150.dp)
+            .height(132.dp)
             .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         border = BorderStroke(1.dp, palette.border),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(
             containerColor = palette.surface,
         )
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Image(
                 painter = painterResource(id = coverImage),
                 contentDescription = title,
                 modifier = Modifier
-                    .height(80.dp)
-                    .width(80.dp)
+                    .height(72.dp)
+                    .width(72.dp)
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 14.dp, end = 10.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = palette.textMain
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = description,
+                    fontSize = 13.sp,
+                    color = palette.textMuted
+                )
+            }
             Text(
-                text = title,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = palette.textMain
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = description,
-                fontSize = 13.sp,
-                color = palette.textMuted
+                text = "进入",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = palette.primary
             )
         }
     }
@@ -171,7 +197,17 @@ private fun BottomNavigationBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 24.dp),
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 16.dp)
+            .background(
+                color = palette.surface,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .border(
+                border = BorderStroke(1.dp, palette.border),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -179,13 +215,14 @@ private fun BottomNavigationBar(
             text = "主页",
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
-            color = palette.textMain
+            color = palette.primary,
+            modifier = Modifier.padding(8.dp)
         )
         Text(
             text = "我的",
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
-            color = palette.primary,
+            color = palette.textMain,
             modifier = Modifier
                 .clickable(onClick = onMyClick)
                 .padding(8.dp)
