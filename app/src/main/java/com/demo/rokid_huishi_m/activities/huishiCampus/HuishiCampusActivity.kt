@@ -19,20 +19,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 class HuishiCampusActivity : ComponentActivity() {
+    companion object {
+        private val sharedRecognizer by lazy { HuishiCampusRecognizer() }
+    }
+
     private var isRecognizing by mutableStateOf(false)
-    private var isManualRecognizing by mutableStateOf(false)
     private var recognitionMessage by mutableStateOf("点击开始识别")
-    private val recognizer by lazy {
-        HuishiCampusRecognizer(
+    private val recognizer get() = sharedRecognizer
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        recognizer.bindUi(
             onRecognizingChanged = { recognizing -> isRecognizing = recognizing },
-            onManualRecognizingChanged = { recognizing ->
-                runOnUiThread {
-                    isManualRecognizing = recognizing
-                }
-            },
             onMessage = { message ->
                 runOnUiThread {
-                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
                 }
             },
             onRecognitionUpdated = { message ->
@@ -41,31 +43,24 @@ class HuishiCampusActivity : ComponentActivity() {
                 }
             },
         )
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         recognizer.attach()
         setContent {
             HuishiCampusScreen(
                 isRecognizing = isRecognizing,
-                isManualRecognizing = isManualRecognizing,
                 recognitionMessage = recognitionMessage,
                 onStartClick = { recognizer.start() },
                 onStopClick = { recognizer.stop() },
-                onManualRecognizeClick = { recognizer.recognizeOnce() }
+                onManualClick = { recognizer.recognizeOnce() }
             )
         }
     }
 
     override fun onStop() {
-        recognizer.pause()
         super.onStop()
     }
 
     override fun onDestroy() {
-        recognizer.release()
+        recognizer.unbindUi()
         super.onDestroy()
     }
 }
@@ -73,11 +68,10 @@ class HuishiCampusActivity : ComponentActivity() {
 @Composable
 fun HuishiCampusScreen(
     isRecognizing: Boolean,
-    isManualRecognizing: Boolean,
     recognitionMessage: String,
     onStartClick: () -> Unit,
     onStopClick: () -> Unit,
-    onManualRecognizeClick: () -> Unit
+    onManualClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -102,20 +96,21 @@ fun HuishiCampusScreen(
             fontSize = 14.sp
         )
         Spacer(modifier = Modifier.height(20.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Button(
                 onClick = {
                     if (isRecognizing) onStopClick() else onStartClick()
-                },
-                enabled = !isManualRecognizing
+                }
             ) {
                 Text(text = if (isRecognizing) "停止识别" else "开始识别")
             }
             Button(
-                onClick = onManualRecognizeClick,
-                enabled = !isRecognizing && !isManualRecognizing
+                onClick = onManualClick
             ) {
-                Text(text = if (isManualRecognizing) "单次识别中..." else "手动识别")
+                Text(text = "手动识别")
             }
         }
     }

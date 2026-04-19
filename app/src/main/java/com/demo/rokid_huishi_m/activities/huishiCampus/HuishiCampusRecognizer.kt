@@ -22,19 +22,15 @@ import java.io.IOException
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 
-class HuishiCampusRecognizer(
-    private val onRecognizingChanged: (Boolean) -> Unit,
-    private val onManualRecognizingChanged: (Boolean) -> Unit,
-    private val onMessage: (String) -> Unit,
-    private val onRecognitionUpdated: (String) -> Unit
-) {
+class HuishiCampusRecognizer {
     companion object {
         private const val TAG = "HuishiCampusRecognizer"
         private const val BASE_URL = "https://face-arec.hdu.edu.cn"
         private const val QUERY_ENDPOINT = "/students/query-by-photo"
         private const val DEVICE_ID = "AR-GLASS-004"
         private const val WEARER_USER_ID = "24320313"
-        private const val CAPTURE_INTERVAL_MS = 2_500L
+        private const val CAPTURE_INTERVAL_MS = 1_800L
+        private const val MANUAL_VIEW_DISMISS_DELAY_MS = 5_000L
         private const val PHOTO_QUALITY = 50
         private val PHOTO_SIZE = Size(320, 240)
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
@@ -49,23 +45,32 @@ class HuishiCampusRecognizer(
         val confidence: Double?
     )
 
-    private enum class RecognitionMode {
-        LOOP,
-        SINGLE
-    }
-
     private var isRecognizing = false
-    private var isManualRecognizing = false
+    private var latestRecognitionMessage = "点击开始识别"
     private var cachedRecognition: RecognitionResult? = null
     private var isRecognitionViewOpened = false
+    private var isStatusViewShowing = false
+    private var activeRecognitionSessionId = 0
+    private var pendingManualDismissSessionId: Int? = null
     private var updateCustomViewMethodResolved = false
     private var updateCustomViewMethodName: String? = null
+    private var isAttached = false
+    private var onRecognizingChanged: ((Boolean) -> Unit)? = null
+    private var onMessage: ((String) -> Unit)? = null
+    private var onRecognitionUpdated: ((String) -> Unit)? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val manualDismissRunnable = Runnable {
+        val sessionId = pendingManualDismissSessionId ?: return@Runnable
+        pendingManualDismissSessionId = null
+        if (isSessionActive(sessionId) && !isRecognizing) {
+            pause()
+        }
+    }
 
     private val captureLoopRunnable = object : Runnable {
         override fun run() {
             if (!isRecognizing) return
-            captureAndQueryStudent(RecognitionMode.LOOP)
+            captureAndQueryStudent()
         }
     }
 
@@ -76,103 +81,144 @@ class HuishiCampusRecognizer(
 
         override fun onOpened() {
             Log.d(TAG, "onOpened")
+            isRecognitionViewOpened = true
         }
 
         override fun onOpenFailed(p0: Int) {
             Log.e(TAG, "onOpenFailed: $p0")
+            isRecognitionViewOpened = false
         }
 
         override fun onUpdated() {
             Log.d(TAG, "onUpdated")
+            isRecognitionViewOpened = true
         }
 
         override fun onClosed() {
             Log.d(TAG, "onClosed")
+            isRecognitionViewOpened = false
         }
     }
 
+    fun bindUi(
+        onRecognizingChanged: (Boolean) -> Unit,
+        onMessage: (String) -> Unit,
+        onRecognitionUpdated: (String) -> Unit
+    ) {
+        this.onRecognizingChanged = onRecognizingChanged
+        this.onMessage = onMessage
+        this.onRecognitionUpdated = onRecognitionUpdated
+        onRecognizingChanged(isRecognizing)
+        onRecognitionUpdated(latestRecognitionMessage)
+    }
+
+    fun unbindUi() {
+        onRecognizingChanged = null
+        onMessage = null
+        onRecognitionUpdated = null
+    }
+
     fun attach() {
+        if (isAttached) return
         CxrApi.getInstance().setCustomViewListener(customViewListener)
+        isAttached = true
     }
 
     fun start() {
         if (isRecognizing) return
-        if (isManualRecognizing) {
-            onMessage("单次识别进行中，请稍候")
-            return
-        }
+        cancelPendingManualDismiss()
+        beginRecognitionSession()
         isRecognizing = true
-        onRecognizingChanged(true)
-        onRecognitionUpdated("识别已开始，正在抓拍照片...")
+        dispatchRecognizingChanged(true)
+        dispatchRecognitionUpdated("识别已开始，正在抓拍照片...")
         cachedRecognition?.let { showRecognitionOnGlasses(it) } ?: showPendingViewOnGlasses()
         mainHandler.post(captureLoopRunnable)
     }
 
     fun recognizeOnce() {
-        if (isRecognizing) {
-            onMessage("连续识别进行中，请先停止")
-            return
+        val wasRecognizing = isRecognizing
+        if (wasRecognizing) {
+            stop(showToast = false)
         }
-        if (isManualRecognizing) {
-            onMessage("单次识别进行中，请稍候")
-            return
-        }
-        setManualRecognizing(true)
-        onRecognitionUpdated("单次识别已开始，正在抓拍照片...")
-        cachedRecognition?.let { showRecognitionOnGlasses(it) } ?: showPendingViewOnGlasses()
-        captureAndQueryStudent(RecognitionMode.SINGLE)
+        cancelPendingManualDismiss()
+        val sessionId = beginRecognitionSession()
+        dispatchRecognitionUpdated("手动识别中，正在抓拍照片...")
+        showPendingViewOnGlasses()
+        dispatchMessage(if (wasRecognizing) "已关闭自动识别，开始手动识别" else "开始手动识别")
+        captureAndQueryStudent(shouldRepeat = false, sessionId = sessionId)
     }
 
     fun stop(showToast: Boolean = true) {
         if (!isRecognizing) return
+        cancelPendingManualDismiss()
+        invalidateRecognitionSession()
         isRecognizing = false
-        onRecognizingChanged(false)
-        onRecognitionUpdated("识别已停止")
+        dispatchRecognizingChanged(false)
+        dispatchRecognitionUpdated("识别已停止")
         mainHandler.removeCallbacks(captureLoopRunnable)
-        if (showToast) onMessage("已停止识别")
+        pause()
+        if (showToast) dispatchMessage("已停止识别")
     }
 
     fun pause() {
-        stop(showToast = false)
-        setManualRecognizing(false)
+        cancelPendingManualDismiss()
         CxrApi.getInstance().closeCustomView()
         isRecognitionViewOpened = false
+        isStatusViewShowing = false
     }
 
     fun release() {
+        cancelPendingManualDismiss()
+        invalidateRecognitionSession()
+        stop(showToast = false)
         pause()
         CxrApi.getInstance().setCustomViewListener(null)
+        isAttached = false
+        unbindUi()
     }
 
-    private fun captureAndQueryStudent(mode: RecognitionMode) {
+    private fun captureAndQueryStudent() {
+        captureAndQueryStudent(shouldRepeat = true, sessionId = activeRecognitionSessionId)
+    }
+
+    private fun captureAndQueryStudent(shouldRepeat: Boolean, sessionId: Int) {
+        if (!isSessionActive(sessionId)) return
         val accessToken = LoginManager.getAccessToken().trim()
         if (accessToken.isBlank()) {
-            onRecognitionUpdated("未检测到登录令牌，请先登录")
-            onMessage("未检测到登录令牌，请先登录")
-            completeRecognition(mode)
+            if (!isSessionActive(sessionId)) return
+            dispatchRecognitionUpdated("未检测到登录令牌，请先登录")
+            dispatchMessage("未检测到登录令牌，请先登录")
+            finishCaptureCycle(shouldRepeat, sessionId)
             return
         }
 
         val pictureCallback = PhotoResultCallback { status, imageData ->
+            if (!isSessionActive(sessionId)) {
+                Log.d(TAG, "忽略过期拍照回调，sessionId=$sessionId")
+                return@PhotoResultCallback
+            }
             if (status != ValueUtil.CxrStatus.RESPONSE_SUCCEED || imageData == null) {
                 Log.e(TAG, "拍照失败，状态码：$status")
-                onRecognitionUpdated("拍照失败${buildRetryHint(mode)}")
-                completeRecognition(mode)
+                dispatchCaptureFailure("拍照失败", shouldRepeat, sessionId)
                 return@PhotoResultCallback
             }
             runCatching {
                 Base64.getEncoder().encodeToString(imageData)
             }.onSuccess { base64Data ->
-                onRecognitionUpdated("拍照成功，正在识别...")
+                if (!isSessionActive(sessionId)) {
+                    Log.d(TAG, "忽略过期图片编码结果，sessionId=$sessionId")
+                    return@onSuccess
+                }
+                dispatchRecognitionUpdated("拍照成功，正在识别...")
                 queryStudentByPhoto(
                     accessToken = accessToken,
                     base64Photo = base64Data,
-                    mode = mode
+                    shouldRepeat = shouldRepeat,
+                    sessionId = sessionId
                 )
             }.onFailure {
                 Log.e(TAG, "图片编码失败 - ${it.message}", it)
-                onRecognitionUpdated("图片编码失败${buildRetryHint(mode)}")
-                completeRecognition(mode)
+                dispatchCaptureFailure("图片编码失败", shouldRepeat, sessionId)
             }
         }
 
@@ -191,8 +237,7 @@ class HuishiCampusRecognizer(
 
             else -> {
                 Log.e(TAG, "拍照请求发送失败")
-                onRecognitionUpdated("拍照请求发送失败${buildRetryHint(mode)}")
-                completeRecognition(mode)
+                dispatchCaptureFailure("拍照请求发送失败", shouldRepeat, sessionId)
             }
         }
     }
@@ -200,7 +245,8 @@ class HuishiCampusRecognizer(
     private fun queryStudentByPhoto(
         accessToken: String,
         base64Photo: String,
-        mode: RecognitionMode
+        shouldRepeat: Boolean,
+        sessionId: Int
     ) {
         val requestBody = JSONObject().apply {
             put("access_token", accessToken)
@@ -218,46 +264,44 @@ class HuishiCampusRecognizer(
 
         HTTP_CLIENT.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                if (!isSessionActive(sessionId)) {
+                    Log.d(TAG, "忽略过期网络失败回调，sessionId=$sessionId")
+                    return
+                }
                 Log.e(TAG, "查询学生信息失败 - ${e.message}", e)
-                onRecognitionUpdated("网络请求失败${buildRetryHint(mode)}")
-                completeRecognition(mode)
+                dispatchCaptureFailure("网络请求失败", shouldRepeat, sessionId)
             }
 
             override fun onResponse(call: Call, response: Response) {
+                if (!isSessionActive(sessionId)) {
+                    Log.d(TAG, "忽略过期网络响应，sessionId=$sessionId")
+                    response.close()
+                    return
+                }
                 val responseBody = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
                     Log.e(TAG, "查询学生信息失败，状态码: ${response.code}, body: $responseBody")
-                    onRecognitionUpdated("识别失败(${response.code})${buildRetryHint(mode)}")
-                    completeRecognition(mode)
+                    dispatchCaptureFailure("识别失败(${response.code})", shouldRepeat, sessionId)
                     return
                 }
                 val recognitionResult = parseRecognitionResult(responseBody)
                 if (recognitionResult != null) {
+                    if (!isSessionActive(sessionId)) {
+                        Log.d(TAG, "忽略过期识别结果，sessionId=$sessionId")
+                        return
+                    }
                     applyRecognitionResult(recognitionResult)
+                    if (!shouldRepeat) {
+                        scheduleManualDismiss(sessionId)
+                    }
                 } else {
                     Log.e(TAG, "响应解析失败，保留上次识别结果")
-                    onRecognitionUpdated("返回数据解析失败${buildRetryHint(mode)}")
+                    dispatchCaptureFailure("返回数据解析失败", shouldRepeat, sessionId)
+                    return
                 }
-                completeRecognition(mode)
+                finishCaptureCycle(shouldRepeat, sessionId)
             }
         })
-    }
-
-    private fun setManualRecognizing(recognizing: Boolean) {
-        if (isManualRecognizing == recognizing) return
-        isManualRecognizing = recognizing
-        onManualRecognizingChanged(recognizing)
-    }
-
-    private fun buildRetryHint(mode: RecognitionMode): String {
-        return if (mode == RecognitionMode.LOOP) "，2.5秒后重试" else "，请重试"
-    }
-
-    private fun completeRecognition(mode: RecognitionMode) {
-        when (mode) {
-            RecognitionMode.LOOP -> scheduleNextCapture()
-            RecognitionMode.SINGLE -> setManualRecognizing(false)
-        }
     }
 
     private fun parseRecognitionResult(responseBody: String): RecognitionResult? {
@@ -363,11 +407,10 @@ class HuishiCampusRecognizer(
         val isChanged = recognitionResult != cachedRecognition
         cachedRecognition = recognitionResult
         if (!isChanged) {
-            Log.d(TAG, "识别结果未变化，跳过重渲染")
-            return
+            Log.d(TAG, "识别结果未变化，执行眼镜端兜底刷新")
         }
         showRecognitionOnGlasses(recognitionResult)
-        onRecognitionUpdated(buildRecognitionMessage(recognitionResult))
+        dispatchRecognitionUpdated(buildRecognitionMessage(recognitionResult))
     }
 
     private fun buildRecognitionMessage(result: RecognitionResult): String {
@@ -377,37 +420,15 @@ class HuishiCampusRecognizer(
     }
 
     private fun showPendingViewOnGlasses() {
-        val root = JSONObject().apply {
-            put("type", "LinearLayout")
-            put("props", JSONObject().apply {
-                put("layout_width", "match_parent")
-                put("layout_height", "match_parent")
-                put("orientation", "vertical")
-                put("gravity", "center")
-                put("backgroundColor", "#55000000")
-            })
-            put("children", JSONArray().apply {
-                put(
-                    JSONObject().apply {
-                        put("type", "TextView")
-                        put("props", JSONObject().apply {
-                            put("layout_width", "wrap_content")
-                            put("layout_height", "wrap_content")
-                            put("text", "慧视校园识别中...")
-                            put("textSize", "22sp")
-                            put("textColor", "#FFFFFFFF")
-                            put("textStyle", "bold")
-                        })
-                    }
-                )
-            })
-        }
-        isRecognitionViewOpened = false
-        openCustomView(root.toString())
+        showStatusOnGlasses(
+            title = "慧视校园识别中...",
+            message = "正在抓拍并识别，请稍候",
+            titleColor = "#FFFFFFFF"
+        )
     }
 
     private fun showRecognitionOnGlasses(result: RecognitionResult) {
-        if (isRecognitionViewOpened && updateRecognitionContentOnGlasses(result)) {
+        if (isRecognitionViewOpened && !isStatusViewShowing && updateRecognitionContentOnGlasses(result)) {
             return
         }
         val root = JSONObject().apply {
@@ -478,6 +499,64 @@ class HuishiCampusRecognizer(
                 )
             })
         }
+        isStatusViewShowing = false
+        isRecognitionViewOpened = openCustomView(root.toString())
+    }
+
+    private fun showFailureOnGlasses(message: String) {
+        showStatusOnGlasses(
+            title = "识别失败",
+            message = message,
+            titleColor = "#FFFF8A80"
+        )
+    }
+
+    private fun showStatusOnGlasses(
+        title: String,
+        message: String,
+        titleColor: String
+    ) {
+        val root = JSONObject().apply {
+            put("type", "LinearLayout")
+            put("props", JSONObject().apply {
+                put("layout_width", "match_parent")
+                put("layout_height", "match_parent")
+                put("orientation", "vertical")
+                put("gravity", "center")
+                put("paddingLeft", "24dp")
+                put("paddingRight", "24dp")
+                put("backgroundColor", "#55000000")
+            })
+            put("children", JSONArray().apply {
+                put(
+                    JSONObject().apply {
+                        put("type", "TextView")
+                        put("props", JSONObject().apply {
+                            put("layout_width", "wrap_content")
+                            put("layout_height", "wrap_content")
+                            put("text", title)
+                            put("textSize", "22sp")
+                            put("textColor", titleColor)
+                            put("textStyle", "bold")
+                        })
+                    }
+                )
+                put(
+                    JSONObject().apply {
+                        put("type", "TextView")
+                        put("props", JSONObject().apply {
+                            put("layout_width", "wrap_content")
+                            put("layout_height", "wrap_content")
+                            put("layout_marginTop", "12dp")
+                            put("text", message)
+                            put("textSize", "16sp")
+                            put("textColor", "#FFFFFFFF")
+                        })
+                    }
+                )
+            })
+        }
+        isStatusViewShowing = true
         isRecognitionViewOpened = openCustomView(root.toString())
     }
 
@@ -563,9 +642,63 @@ class HuishiCampusRecognizer(
         }
     }
 
+    private fun dispatchRecognizingChanged(recognizing: Boolean) {
+        onRecognizingChanged?.invoke(recognizing)
+    }
+
+    private fun dispatchMessage(message: String) {
+        onMessage?.invoke(message)
+    }
+
+    private fun dispatchRecognitionUpdated(message: String) {
+        latestRecognitionMessage = message
+        onRecognitionUpdated?.invoke(message)
+    }
+
     private fun scheduleNextCapture() {
         if (!isRecognizing) return
         mainHandler.removeCallbacks(captureLoopRunnable)
         mainHandler.postDelayed(captureLoopRunnable, CAPTURE_INTERVAL_MS)
+    }
+
+    private fun finishCaptureCycle(shouldRepeat: Boolean, sessionId: Int) {
+        if (shouldRepeat && isSessionActive(sessionId)) {
+            scheduleNextCapture()
+        }
+    }
+
+    private fun dispatchCaptureFailure(baseMessage: String, shouldRepeat: Boolean, sessionId: Int) {
+        if (!isSessionActive(sessionId)) return
+        val message = if (shouldRepeat) "$baseMessage，1.8秒后重试" else baseMessage
+        showFailureOnGlasses(message)
+        dispatchRecognitionUpdated(message)
+        if (!shouldRepeat) {
+            scheduleManualDismiss(sessionId)
+        }
+        finishCaptureCycle(shouldRepeat, sessionId)
+    }
+
+    private fun beginRecognitionSession(): Int {
+        activeRecognitionSessionId += 1
+        return activeRecognitionSessionId
+    }
+
+    private fun invalidateRecognitionSession() {
+        activeRecognitionSessionId += 1
+    }
+
+    private fun isSessionActive(sessionId: Int): Boolean {
+        return sessionId == activeRecognitionSessionId
+    }
+
+    private fun scheduleManualDismiss(sessionId: Int) {
+        cancelPendingManualDismiss()
+        pendingManualDismissSessionId = sessionId
+        mainHandler.postDelayed(manualDismissRunnable, MANUAL_VIEW_DISMISS_DELAY_MS)
+    }
+
+    private fun cancelPendingManualDismiss() {
+        pendingManualDismissSessionId = null
+        mainHandler.removeCallbacks(manualDismissRunnable)
     }
 }
